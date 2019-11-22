@@ -6,9 +6,10 @@
 library(readr)
 library(ggplot2)
 library(dplyr)
+library(tm)
 
 # Load full dataset
-yelp_reviews <- read_csv("Data/yelp_academic_dataset_review.csv")
+yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
 
 # Create random subset dataset
 set.seed(100)
@@ -45,5 +46,12 @@ cor_mat <- reviews[, c(4, 6, 10, 11)]
 cor(cor_mat)
 
 # Classifying the dataset and splitting it into the reviews and stars
+x <- reviews$text
+y <- reviews$stars
+
+# Data Cleaning
+reviews$text <- tm_map(reviews$text, stripWhitespace)
+
+
 
 
