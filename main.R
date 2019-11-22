@@ -7,6 +7,7 @@ library(readr)
 library(ggplot2)
 library(dplyr)
 library(tm)
+library(SnowballC)
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
@@ -15,6 +16,57 @@ yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
 set.seed(100)
 samp <- sample(nrow(yelp_reviews), size = 350000)
 reviews <- yelp_reviews[samp, ]
+
+#----
+# https://www.kaggle.com/amhchiu/bag-of-ingredients-in-r
+#----
+
+# Create Training/Test
+temp <- sample(nrow(reviews), size=233333)
+train <- reviews[temp,]
+test <- reviews[-temp,]
+
+# Create Corpus
+text <- Corpus(VectorSource(train$text))
+
+# Cleaning
+text <- tm_map(text, stripWhitespace)
+text <- tm_map(text, content_transformer(tolower))
+text <- tm_map(text, removeWords, stopwords("english"))
+text <- tm_map(text, stemDocument)
+
+# Create Document Term Matrix
+textDTM <- DocumentTermMatrix(text)
+
+# Feature selection
+sparse <- removeSparseTerms(textDTM, 0.99)
+## This function takes a second parameters, the sparsity threshold.
+## The sparsity threshold works as follows.
+## If we say 0.98, this means to only keep terms that appear in 2% or more of the recipes.
+## If we say 0.99, that means to only keep terms that appear in 1% or more of the recipes.
+
+textDTM <- as.data.frame(as.matrix(sparse))
+## Add the dependent variable to the data.frame
+textDTM$stars <- as.factor(train$stars)
+
+# Create Model
+x <- sample(nrow(textDTM), size = 77778)
+intrain <- textDTM[x,]
+intest <- textDTM[-x,]
+
+library(naivebayes)
+
+x <- as.matrix(intrain[,1:891])
+y <- intrain[,892]
+
+model <- multinomial_naive_bayes(x, y)
+pred <- predict(model, data = intest, type = "class")
+
+library(caret)
+
+cfm <- confusionMatrix(pred, intrain$stars)
+cfm
+
 
 #----
 # Data Exploration
@@ -50,8 +102,6 @@ x <- reviews$text
 y <- reviews$stars
 
 # Data Cleaning
-reviews$text <- tm_map(reviews$text, stripWhitespace)
-
-
+reviews$text <- as.String(reviews$text)
 
 
