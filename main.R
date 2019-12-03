@@ -57,9 +57,6 @@ reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
 reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
                            to = c("1-2", "1-2", "4-5", "4-5"))
 
-
-
-
 ##----
 ## Create final dataset and split randomly for training/test
 
