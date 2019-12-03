@@ -4,13 +4,85 @@
 
 # Load libraries
 library(readr)
-library(ggplot2)
 library(dplyr)
+library(plyr)
+library(caTools)
+
+library(ggplot2)
 library(tm)
 library(SnowballC)
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
+yelp_business <- read_csv("yelp_academic_dataset_business.csv")
+
+#----
+# Data preprocessing
+#----
+
+##----
+## Dataset "yelp_business"
+
+# Remove unnecessary columns
+business <- yelp_business[, c(-2:-10, -12:-22, -24:-37)]
+business <- business[, c(-5:-27, -29:-31, -33:-71)]
+
+# Rename columns
+business$business_name <- business$name
+business <- business[,-3]
+
+business$avg_stars <- business$stars
+business <- business[,-5]
+
+# Split character value in "Categories" variable
+business$categories <- strsplit(business$categories, split = ";")
+
+##----
+## Create new dataframe "reviews" consisting of subset of all restaurants
+
+# Merge dfs "business" and "yelp_reviews"
+reviews_full <- inner_join(yelp_reviews, business)
+
+# Create df "reviews" as subset of all restaurants
+reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
+
+##----
+## Dataset "reviews_subset"
+
+# Check data structure
+str(reviews_subset)
+
+# (re-)Factor dependent variable "Stars"
+reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
+reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
+                           to = c("1-2", "1-2", "4-5", "4-5"))
+
+
+
+
+##----
+## Create final dataset and split randomly for training/test
+
+# Create dataset with n = 350,000 by random selection
+set.seed(100)
+samp <- sample(nrow(reviews_subset), size = 350000)
+reviews <- reviews_subset[samp,]
+
+# Create Train/Test set
+set.seed(111)
+samp <- sample.split(reviews$stars, SplitRatio = 2/3)
+train <- subset(reviews, samp == TRUE)
+test <- subset(reviews, samp == FALSE)
+
+#----
+# Text cleaning????
+
+
+
+
+
+
+
 
 # Create random subset dataset
 set.seed(100)
