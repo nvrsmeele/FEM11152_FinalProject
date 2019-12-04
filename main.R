@@ -7,9 +7,9 @@ library(readr)
 library(dplyr)
 library(plyr)
 library(caTools)
+library(tm)
 
 library(ggplot2)
-library(tm)
 library(SnowballC)
 
 # Load full dataset
@@ -17,11 +17,11 @@ yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
 yelp_business <- read_csv("yelp_academic_dataset_business.csv")
 
 #----
-# Data preprocessing
+# 1. Data preprocessing
 #----
 
 ##----
-## Dataset "yelp_business"
+## 1.1 Dataset "yelp_business"
 
 # Remove unnecessary columns
 business <- yelp_business[, c(-2:-10, -12:-22, -24:-37)]
@@ -38,7 +38,7 @@ business <- business[,-5]
 business$categories <- strsplit(business$categories, split = ";")
 
 ##----
-## Create new dataframe "reviews" consisting of subset of all restaurants
+## 1.2 Create new dataframe "reviews" consisting of subset of all restaurants
 
 # Merge dfs "business" and "yelp_reviews"
 reviews_full <- inner_join(yelp_reviews, business)
@@ -47,7 +47,7 @@ reviews_full <- inner_join(yelp_reviews, business)
 reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
 
 ##----
-## Dataset "reviews_subset"
+## 1.3 Dataset "reviews_subset"
 
 # Check data structure
 str(reviews_subset)
@@ -56,6 +56,26 @@ str(reviews_subset)
 reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
 reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
                            to = c("1-2", "1-2", "4-5", "4-5"))
+
+##----
+## 1.4 Text data preprocessing (dataset "reviews_subset")
+
+# Create a NLP corpus
+text <- Corpus(VectorSource(reviews_subset$text))
+
+# Corpus text cleaning
+text <- tm_map(text, stripWhitespace)
+text <- tm_map(text, content_transformer(tolower))
+text <- tm_map(text, removeWords, stopwords("english"))
+
+# text <- tm_map(text, stemDocument)
+
+# Tokenize documents in corpus based on unigram
+
+
+
+
+
 
 ##----
 ## Create final dataset and split randomly for training/test
@@ -71,8 +91,7 @@ samp <- sample.split(reviews$stars, SplitRatio = 2/3)
 train <- subset(reviews, samp == TRUE)
 test <- subset(reviews, samp == FALSE)
 
-#----
-# Text cleaning????
+
 
 
 
