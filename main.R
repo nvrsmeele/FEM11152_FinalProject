@@ -9,6 +9,9 @@ library(plyr)
 library(caTools)
 library(tm)
 
+
+library(SentimentAnalysis)
+
 library(ggplot2)
 library(SnowballC)
 
@@ -67,6 +70,12 @@ text <- Corpus(VectorSource(reviews_subset$text))
 text <- tm_map(text, stripWhitespace)
 text <- tm_map(text, content_transformer(tolower))
 text <- tm_map(text, removeWords, stopwords("english"))
+text <- tm_map(text, removePunctuation)
+text <- tm_map(text, removeNumbers)
+
+
+# Tokenize documents in corpus based on unigram
+
 
 # text <- tm_map(text, stemDocument)
 
