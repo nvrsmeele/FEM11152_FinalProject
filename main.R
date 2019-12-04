@@ -8,7 +8,8 @@ library(dplyr)
 library(plyr)
 library(caTools)
 library(tm)
-
+library(textstem)
+library(tokenizers)
 
 library(SentimentAnalysis)
 
@@ -50,7 +51,7 @@ reviews_full <- inner_join(yelp_reviews, business)
 reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
 
 ##----
-## 1.3 Dataset "reviews_subset"
+## 1.3 Dataset "reviews_subset" and create workable dataset as "reviews_final"
 
 # Check data structure
 str(reviews_subset)
@@ -60,11 +61,16 @@ reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
 reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
                            to = c("1-2", "1-2", "4-5", "4-5"))
 
+# Create dataset "reviews_final" with n = 350,000 by random selection
+set.seed(100)
+samp <- sample(nrow(reviews_subset), size = 250000)
+reviews_final <- reviews_subset[samp,]
+
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
 # Create a NLP corpus
-text <- Corpus(VectorSource(reviews_subset$text))
+text <- Corpus(VectorSource(reviews_final$text))
 
 # Corpus text cleaning
 text <- tm_map(text, stripWhitespace)
@@ -72,16 +78,19 @@ text <- tm_map(text, content_transformer(tolower))
 text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
-
-
-# Tokenize documents in corpus based on unigram
-
+text <- tm_map(text, lemmatize_strings)
 
 # text <- tm_map(text, stemDocument)
 
-# Tokenize documents in corpus based on unigram
+# Tokenize documents in corpus based on unigram and tf-idf
+textDTM <- DocumentTermMatrix(text, control = list(tokenize = tokenize_ngrams,
+                                                   weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+#textTDM <- TermDocumentMatrix(text, control = list(tokenize = tokenize_ngrams,
+#                              weighting = function(x) weightTfIdf(x, normalize = FALSE)))
 
-
+# Reformat as dataframe and add dependent variable to dataframe
+textDTM <- as.data.frame(as.matrix(textDTM))
+textDTM$stars <- as.factor(reviews_final$stars)
 
 
 
