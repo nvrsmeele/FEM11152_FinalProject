@@ -9,12 +9,13 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
+
+#----------------------
 library(tokenizers)
-
 library(SentimentAnalysis)
-
 library(ggplot2)
 library(SnowballC)
+#----------------------
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
@@ -63,13 +64,16 @@ reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", 
 
 # Create dataset "reviews_final" with n = 350,000 by random selection
 set.seed(100)
-samp <- sample(nrow(reviews_subset), size = 250000)
+samp <- sample(nrow(reviews_subset), size = 350000)
 reviews_final <- reviews_subset[samp,]
+
+# Clean work environment to free memory
+rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset, samp)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
-# Create a NLP corpus
+# Create a Corpus
 text <- Corpus(VectorSource(reviews_final$text))
 
 # Corpus text cleaning
@@ -79,35 +83,39 @@ text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
 text <- tm_map(text, lemmatize_strings)
+#text <- tm_map(text, stemDocument)
 
-# text <- tm_map(text, stemDocument)
-
-# Tokenize documents in corpus based on unigram and tf-idf
-textDTM <- DocumentTermMatrix(text, control = list(tokenize = tokenize_ngrams,
-                                                   weighting = function(x) weightTfIdf(x, normalize = FALSE)))
-#textTDM <- TermDocumentMatrix(text, control = list(tokenize = tokenize_ngrams,
-#                              weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+# Tokenize documents in corpus based on unigram and tf-idf, and remove sparse terms
+textDTM <- DocumentTermMatrix(text, control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+#textDTM <- DocumentTermMatrix(text, control = list(tokenize = tokenize_ngrams, weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+sparse <- removeSparseTerms(textDTM, 0.99)
 
 # Reformat as dataframe and add dependent variable to dataframe
-textDTM <- as.data.frame(as.matrix(textDTM))
-textDTM$stars <- as.factor(reviews_final$stars)
+textDTM <- as.data.frame(as.matrix(sparse))
+textDTM$stars <- reviews_final$stars
 
-
-
+#----
+# 2. Model building preparation
+#----
 
 ##----
-## Create final dataset and split randomly for training/test
-
-# Create dataset with n = 350,000 by random selection
-set.seed(100)
-samp <- sample(nrow(reviews_subset), size = 350000)
-reviews <- reviews_subset[samp,]
-
-# Create Train/Test set
+## Split dataset randomly for training/test
 set.seed(111)
-samp <- sample.split(reviews$stars, SplitRatio = 2/3)
-train <- subset(reviews, samp == TRUE)
-test <- subset(reviews, samp == FALSE)
+samp <- sample.split(textDTM$stars, SplitRatio = 2/3)
+train <- subset(textDTM, samp == TRUE)
+test <- subset(textDTM, samp == FALSE)
+
+##----
+## Separate dependent/independent variables in training set???
+x_train <- as.matrix(train[,1:858])
+y_train <- train[,859]
+
+#----
+# 3. Model building
+#----
+
+##----
+## multi-class Naive Bayes Classifier
 
 
 
@@ -118,10 +126,18 @@ test <- subset(reviews, samp == FALSE)
 
 
 
-# Create random subset dataset
-set.seed(100)
-samp <- sample(nrow(yelp_reviews), size = 350000)
-reviews <- yelp_reviews[samp, ]
+
+
+
+
+
+
+
+
+
+
+
+
 
 #----
 # https://www.kaggle.com/amhchiu/bag-of-ingredients-in-r
