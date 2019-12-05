@@ -116,8 +116,18 @@ y_train <- train[,859]
 
 ##----
 ## multi-class Naive Bayes Classifier
+library(naivebayes)
 
+x <- as.matrix(intrain[,1:891])
+y <- intrain[,892]
 
+model <- multinomial_naive_bayes(as.matrix(train[,1:858]), train[,859])
+pred <- predict(model, data = test, type = "class")
+
+library(caret)
+
+cfm <- confusionMatrix(pred, train$stars)
+cfm
 
 
 
