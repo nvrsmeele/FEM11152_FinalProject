@@ -9,9 +9,14 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
+library(tidytext)
+
+
+
 
 #----------------------
 library(tokenizers)
+library(tidytext)
 library(SentimentAnalysis)
 library(ggplot2)
 library(SnowballC)
@@ -74,7 +79,8 @@ rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset, samp)
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
 # Create a Corpus
-text <- Corpus(VectorSource(reviews_final$text))
+#text <- Corpus(VectorSource(reviews_final$text))
+text <- VCorpus(VectorSource(reviews_final$text))
 
 # Corpus text cleaning
 text <- tm_map(text, stripWhitespace)
@@ -82,17 +88,39 @@ text <- tm_map(text, content_transformer(tolower))
 text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
-text <- tm_map(text, lemmatize_strings)
-#text <- tm_map(text, stemDocument)
+text_stem <- tm_map(text, stemDocument)
+text_lemma <- tm_map(text, lemmatize_strings)
 
-# Tokenize documents in corpus based on unigram and tf-idf, and remove sparse terms
-textDTM <- DocumentTermMatrix(text, control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
-#textDTM <- DocumentTermMatrix(text, control = list(tokenize = tokenize_ngrams, weighting = function(x) weightTfIdf(x, normalize = FALSE)))
-sparse <- removeSparseTerms(textDTM, 0.99)
+##----
+## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
 
-# Reformat as dataframe and add dependent variable to dataframe
-textDTM <- as.data.frame(as.matrix(sparse))
-textDTM$stars <- reviews_final$stars
+# Unigram model based on Stemming (base model)
+unistem_textDTM <- DocumentTermMatrix(text_stem,
+                   control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
+unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
+
+# Bigram model based on Stemming
+text_tidy <- tidy(text_stem)
+text_tidy$id <- as.integer(text_tidy$id)
+
+## Create DocumentTermMatrix for Bigram model based on Stemming
+bistem_textDTM <- text_tidy %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  group_by(id) %>%
+  dplyr::count(bigram) %>%
+  bind_tf_idf(bigram, id, n) %>%
+  cast_dtm(id, bigram, tf_idf)
+
+sparse <- removeSparseTerms(bistem_textDTM, 0.99) # remove sparse terms
+bistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+bistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
+
+# Unigram model based on Lemmatization
+
+# Bigram model based on Lemmatization
+
 
 #----
 # 2. Model building preparation
@@ -121,7 +149,7 @@ library(naivebayes)
 x <- as.matrix(intrain[,1:891])
 y <- intrain[,892]
 
-model <- multinomial_naive_bayes(as.matrix(train[,1:858]), train[,859])
+model <- multinomial_naive_bayes(as.matrix(train[,1:104]), train[,105])
 pred <- predict(model, data = test, type = "class")
 
 library(caret)
