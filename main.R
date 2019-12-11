@@ -9,14 +9,14 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
+library(lexicon)
 library(tidytext)
-
-
+library(naivebayes)
+library(caret)
 
 
 #----------------------
 library(tokenizers)
-library(tidytext)
 library(SentimentAnalysis)
 library(ggplot2)
 library(SnowballC)
@@ -64,22 +64,25 @@ str(reviews_subset)
 
 # (re-)Factor dependent variable "Stars"
 reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
-reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
+
+# Create df with dependent variable "Stars" as 3 classes
+reviews_3class <- reviews_subset
+reviews_3class$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
                            to = c("1-2", "1-2", "4-5", "4-5"))
 
 # Create dataset "reviews_final" with n = 350,000 by random selection
 set.seed(100)
 samp <- sample(nrow(reviews_subset), size = 350000)
 reviews_final <- reviews_subset[samp,]
+reviews_final3 <- reviews_3class[samp,]
 
 # Clean work environment to free memory
-rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset, samp)
+rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset, reviews_3class,samp)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
-# Create a Corpus
-#text <- Corpus(VectorSource(reviews_final$text))
+# Create a VCorpus
 text <- VCorpus(VectorSource(reviews_final$text))
 
 # Corpus text cleaning
@@ -89,7 +92,36 @@ text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
 text_stem <- tm_map(text, stemDocument)
-text_lemma <- tm_map(text, lemmatize_strings)
+
+
+#----
+# Concept for Lemmatization
+#----
+text_lemma <- tm_map(text, lemmatize_words)
+text_vec <- tidy(text)
+text_vec$text <- as.String(text_vec$text)
+text_vec$id <- as.integer(text_vec$id)
+
+text_lemma <- text_vec %>%
+  lemmatize_strings(text, dictionary = lexicon::hash_nrc_emotions)
+
+bistem_textDTM <- text_tidy %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  group_by(id) %>%
+  dplyr::count(bigram) %>%
+  bind_tf_idf(bigram, id, n) %>%
+  cast_dtm(id, bigram, tf_idf)
+#----
+
+
+# Create Corpus + text cleaning for 3 classes
+text3 <- VCorpus(VectorSource(reviews_final3$text))
+text3 <- tm_map(text3, stripWhitespace)
+text3 <- tm_map(text3, content_transformer(tolower))
+text3 <- tm_map(text3, removeWords, stopwords("english"))
+text3 <- tm_map(text3, removePunctuation)
+text3 <- tm_map(text3, removeNumbers)
+text_stem3 <- tm_map(text3, stemDocument)
 
 ##----
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
@@ -129,14 +161,19 @@ bistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 ##----
 ## Split dataset randomly for training/test
 set.seed(111)
-samp <- sample.split(textDTM$stars, SplitRatio = 2/3)
-train <- subset(textDTM, samp == TRUE)
-test <- subset(textDTM, samp == FALSE)
+samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
+train <- subset(unistem_textDTM, samp == TRUE)
+test <- subset(unistem_textDTM, samp == FALSE)
 
 ##----
 ## Separate dependent/independent variables in training set???
-x_train <- as.matrix(train[,1:858])
-y_train <- train[,859]
+x_train <- train[,1:887]
+y_train <- train[,888]
+
+train_down <- downSample(x_train, y_train, yname = "Stars")
+
+x_trainDown <- train_down[,1:887]
+y_trainDown <- train_down[,888]
 
 #----
 # 3. Model building
@@ -144,18 +181,23 @@ y_train <- train[,859]
 
 ##----
 ## multi-class Naive Bayes Classifier
-library(naivebayes)
-
-x <- as.matrix(intrain[,1:891])
-y <- intrain[,892]
-
-model <- multinomial_naive_bayes(as.matrix(train[,1:104]), train[,105])
+model <- multinomial_naive_bayes(as.matrix(x_trainDown), y_trainDown)
 pred <- predict(model, data = test, type = "class")
-
-library(caret)
-
-cfm <- confusionMatrix(pred, train$stars)
+cfm <- confusionMatrix(data = pred, reference = y_train)
 cfm
+
+##----
+## Random Forest Classifier
+
+
+##----
+## XGBoost Classifier
+
+
+##----
+## Neural Network Classifier
+
+
 
 
 
