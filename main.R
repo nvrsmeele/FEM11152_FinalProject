@@ -13,6 +13,8 @@ library(lexicon)
 library(tidytext)
 library(naivebayes)
 library(caret)
+library(randomForest)
+library(rpart)
 
 
 #----------------------
@@ -113,8 +115,8 @@ bistem_textDTM <- text_tidy %>%
   cast_dtm(id, bigram, tf_idf)
 #----
 
-
 # Create Corpus + text cleaning for 3 classes
+#----
 text3 <- VCorpus(VectorSource(reviews_final3$text))
 text3 <- tm_map(text3, stripWhitespace)
 text3 <- tm_map(text3, content_transformer(tolower))
@@ -122,6 +124,7 @@ text3 <- tm_map(text3, removeWords, stopwords("english"))
 text3 <- tm_map(text3, removePunctuation)
 text3 <- tm_map(text3, removeNumbers)
 text_stem3 <- tm_map(text3, stemDocument)
+#----
 
 ##----
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
@@ -159,11 +162,33 @@ bistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 #----
 
 ##----
-## Split dataset randomly for training/test
+## Split unistem_textDTM randomly for training/test
 set.seed(111)
 samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
-train <- subset(unistem_textDTM, samp == TRUE)
-test <- subset(unistem_textDTM, samp == FALSE)
+train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
+test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
+
+ytrain.uni <- train.uni[,888] # declare training response variable
+xtrain.uni <- train.uni[,1:887] # declare training predictor variables
+
+ytest.uni <- test.uni[,888] # declare test response variable
+xtest.uni <- test.uni[,1:887] # declare test predictor variables
+
+## Split bistem_textDTM randomly for training/test
+set.seed(150)
+samp <- sample.split(bistem_textDTM$stars, SplitRatio = 2/3)
+train.bi <- subset(bistem_textDTM, samp == TRUE) # declare training set
+test.bi <- subset(bistem_textDTM, samp == FALSE) # declare test set
+
+ytrain.bi <- train.bi[,105] # declare training response variable
+xtrain.bi <- train.bi[,1:104] # declare training predictor variables
+
+ytest.bi <- test.bi[,105] # declare test response variable
+xtest.bi <- test.bi[,1:104] # declare test predictor variables
+
+##----
+## Clean work environment to free memory
+rm(text, text_stem, sparse, text_tidy, samp)
 
 ##----
 ## Separate dependent/independent variables in training set???
@@ -175,19 +200,68 @@ train_down <- downSample(x_train, y_train, yname = "Stars")
 x_trainDown <- train_down[,1:887]
 y_trainDown <- train_down[,888]
 
+
 #----
 # 3. Model building
 #----
 
 ##----
-## multi-class Naive Bayes Classifier
-model <- multinomial_naive_bayes(as.matrix(x_trainDown), y_trainDown)
-pred <- predict(model, data = test, type = "class")
-cfm <- confusionMatrix(data = pred, reference = y_train)
-cfm
+## multi-class Naive Bayes Classifier (base model)
+
+# Step1: Create NB classifier
+nb_model <- multinomial_naive_bayes(as.matrix(xtrain.uni), ytrain.uni)
+
+# Step 2: Generate predictions of the NB classifier
+pred <- predict(nb_model, data = test.uni, type = "class")
+
+# Step 3: Create confusion matrix of NB's prediction performance
+nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
 
 ##----
 ## Random Forest Classifier
+
+# Step 1: Run initial Random Forest model
+set.seed(200)
+rf_model <- randomForest(train.uni[,1:887], train.uni[,888], mtry = 100, replace = TRUE,
+                         importance = TRUE, ntree = 1000,
+                         control = rpart.control(minsplit = 2, cp = 0))
+
+# Step 2: Find OOB error convergence to determine 'best' ntree
+plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
+     ylab = "OOB error", main = "Random Forest classifier", las = 1)
+abline(v = 500, col = "red", lty = 3)
+
+# Step 3: Find 'best' mtry
+mtry_err <- vector(length = 12) # initialize empty vector
+
+# Run 12-times random forest model and obtain OOB estimated error per interation
+for(i in 1:12){
+  set.seed(205)
+  temp <- randomForest(Revenue ~ ., data = train, mtry = i, replace = TRUE,
+                       importance = TRUE, ntree=500,
+                       control = rpart.control(minsplit = 2, cp = 0))
+  mtry_err[i] <- temp$err.rate[500,1]
+}
+
+# Store all 12 OOB estimated errors in matrix
+mtry <- c(1:12)
+mtry_mx <- data.frame(cbind(mtry, mtry_err))
+
+# Visualize OOB error per mtry
+plot(mtry_mx$mtry, mtry_mx$mtry_err, type = "b", pch=19,
+     xlab = "Number of predictors",
+     ylab = "OOB error", main = "Random Forest predictor parameter")
+abline(v = 5, col = "red", lty = 3)
+
+# Step 4: Run final Random Forest model
+set.seed(215)
+rf_best <- randomForest(Revenue ~ ., data = train, mtry = 4, replace = TRUE,
+                        importance = TRUE, ntree=500, xtest = xtest, ytest = ytest,
+                        control = rpart.control(minsplit = 2, cp = 0))
+
+# Step 5: Performance evaluation by OOB estimated error/accuracy
+rf_ooberr <- round(rf_best$err.rate[500,1], digits = 4)
+rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 
 
 ##----
