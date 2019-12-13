@@ -9,13 +9,17 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
+library(tokenizers)
 library(lexicon)
 library(tidytext)
 library(naivebayes)
 library(caret)
 library(randomForest)
 library(rpart)
-
+library(xgboost)
+library(readr)
+library(stringr)
+library(car)
 
 #----------------------
 library(tokenizers)
@@ -56,7 +60,7 @@ business$categories <- strsplit(business$categories, split = ";")
 reviews_full <- inner_join(yelp_reviews, business)
 
 # Create df "reviews" as subset of all restaurants
-reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
+reviews_subset <- reviews_full[which(grepl("Diners", reviews_full$categories)),]
 
 ##----
 ## 1.3 Dataset "reviews_subset" and create workable dataset as "reviews_final"
@@ -68,15 +72,15 @@ str(reviews_subset)
 reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
 
 # Create df with dependent variable "Stars" as 3 classes
-reviews_3class <- reviews_subset
-reviews_3class$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
-                           to = c("1-2", "1-2", "4-5", "4-5"))
+#reviews_3class <- reviews_subset
+#reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
+#                           to = c("1-2", "1-2", "4-5", "4-5"))
 
 # Create dataset "reviews_final" with n = 350,000 by random selection
-set.seed(100)
-samp <- sample(nrow(reviews_subset), size = 350000)
-reviews_final <- reviews_subset[samp,]
-reviews_final3 <- reviews_3class[samp,]
+#set.seed(100)
+#samp <- sample(nrow(reviews_subset), size = 75000)
+#reviews_final <- reviews_subset[samp,]
+
 
 # Clean work environment to free memory
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
@@ -85,7 +89,8 @@ rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
 # Create a VCorpus
-text <- VCorpus(VectorSource(reviews_final$text))
+#text <- VCorpus(VectorSource(reviews_final$text))
+text <- VCorpus(VectorSource(reviews_subset$text))
 
 # Corpus text cleaning
 text <- tm_map(text, stripWhitespace)
@@ -94,7 +99,6 @@ text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
 text_stem <- tm_map(text, stemDocument)
-
 
 #----
 # Concept for Lemmatization
@@ -130,9 +134,22 @@ text_stem3 <- tm_map(text3, stemDocument)
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
 
 # Unigram model based on Stemming (base model)
-#----
 unistem_textDTM <- DocumentTermMatrix(text_stem,
                    control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+sparse <- removeSparseTerms(unistem_textDTM, 0.98) # remove sparse terms
+unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+unistem_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+
+# Bigram model based on Stemming
+library(RWeka)
+bigramToken <- function(x){
+  tokenize_ngrams(x, n = 2)
+}
+
+
+bistem_textDTM <- DocumentTermMatrix(text_stem,
+                  control = list(tokenize = bigramToken,
+                  weighting = function(x) weightTfIdf(x, normalize = FALSE)))
 sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
 unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
 unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
@@ -140,23 +157,6 @@ unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 # Bigram model based on Stemming
 text_tidy <- tidy(text_stem)
 text_tidy$id <- as.integer(text_tidy$id)
-#----
-
-# Ngram model based on Stemming
-text_tidy <- tidy(text_stem)
-text_tidy$id <- as.integer(text_tidy$id)
-
-## Create DocumentTermMatrix for Unigram model based on Stemming
-unistem_textDTM <- text_tidy %>%
-  unnest_tokens(unigram, text, token = "ngrams", n = 1) %>%
-  group_by(id) %>%
-  dplyr::count(unigram) %>%
-  bind_tf_idf(unigram, id, n) %>%
-  cast_dtm(id, unigram, tf_idf)
-
-sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
-unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 
 ## Create DocumentTermMatrix for Bigram model based on Stemming
 bistem_textDTM <- text_tidy %>%
@@ -186,8 +186,12 @@ samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
 train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
 test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
 
-ytrain.uni <- train.uni[,888] # declare training response variable
-xtrain.uni <- train.uni[,1:887] # declare training predictor variables
+ytrain.uni <- train.uni[,500] # declare training response variable
+xtrain.uni <- train.uni[,1:499] # declare training predictor variables
+
+trainDown <- downSample(xtrain.uni, ytrain.uni, yname = "stars")
+xtrainDown.uni <- trainDown[,1:499]
+ytrainDown.uni <- trainDown[,500]
 
 ytest.uni <- test.uni[,888] # declare test response variable
 xtest.uni <- test.uni[,1:887] # declare test predictor variables
@@ -240,9 +244,12 @@ nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(train.uni[,1:887], train.uni[,888], mtry = 29, replace = TRUE,
-                         importance = TRUE, ntree = 75,
+rf_model <- randomForest(xtrainDown.uni, ytrainDown.uni, mtry = 22, replace = TRUE,
+                         importance = TRUE, ntree = 75, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
+
+pred <- predict(rf_model, data = test.uni, type = "class")
+rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
 plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
@@ -285,26 +292,66 @@ rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 ##----
 ## XGBoost Classifier
 
+xgbtrain <- xgb.DMatrix(data = as.matrix(xtrainDown.uni), label = as.numeric(ytrainDown.uni)-1)
+
+numberOfClasses <- length(unique(ytrainDown.uni))
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = numberOfClasses)
+nround    <- 50 # number of XGBoost rounds
+cv.nfold  <- 5
+
+# Fit cv.nfold * cv.nround XGB models and save OOF predictions
+cv_model <- xgb.cv(params = xgb_params,
+                   data = xgbtrain, 
+                   nrounds = nround,
+                   nfold = cv.nfold,
+                   verbose = TRUE,
+                   prediction = TRUE)
+
+OOF_prediction <- data.frame(cv_model$pred) %>%
+  mutate(max_prob = max.col(., ties.method = "last"),
+         label = ytrainDown.uni)
+
+confusionMatrix(factor(OOF_prediction$max_prob),
+                factor(OOF_prediction$label),
+                mode = "everything")
+
 
 ##----
 ## Neural Network Classifier
 
+library(keras)
+library(tensorflow)
+library(reticulate)
 
+reticulate::use_python("/opt/anaconda3/envs/r-base/bin")
 
+xtrain.norm <- normalize(as.matrix(xtrain.uni))
+ytrain.bin <- to_categorical(as.numeric(ytrain.uni)-1, 5)
+ytest.bin <- to_categorical(as.numeric(ytest.uni)-1, 5)
 
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 32, activation = "relu", input_shape = c(499)) %>%
+  layer_dropout(0.25) %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dropout(0.25) %>%
+  layer_dense(units = 8, activation = "relu") %>%
+  layer_dense(units = 5, activation = "softmax")
 
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'categorical_crossentropy',
+  metrics = list('accuracy')
+)
 
-
-
-
-
-
-
-
-
-
-
-
+trained_model <- model %>% fit(
+  xtrain.norm,
+  ytrain.bin,
+  epochs = 50,
+  batch_size = 512,
+  validation_split = 0.2,
+)
 
 
 
