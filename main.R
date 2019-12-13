@@ -79,7 +79,7 @@ reviews_final <- reviews_subset[samp,]
 reviews_final3 <- reviews_3class[samp,]
 
 # Clean work environment to free memory
-rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset, reviews_3class,samp)
+rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
@@ -130,6 +130,7 @@ text_stem3 <- tm_map(text3, stemDocument)
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
 
 # Unigram model based on Stemming (base model)
+#----
 unistem_textDTM <- DocumentTermMatrix(text_stem,
                    control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
 sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
@@ -139,6 +140,23 @@ unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 # Bigram model based on Stemming
 text_tidy <- tidy(text_stem)
 text_tidy$id <- as.integer(text_tidy$id)
+#----
+
+# Ngram model based on Stemming
+text_tidy <- tidy(text_stem)
+text_tidy$id <- as.integer(text_tidy$id)
+
+## Create DocumentTermMatrix for Unigram model based on Stemming
+unistem_textDTM <- text_tidy %>%
+  unnest_tokens(unigram, text, token = "ngrams", n = 1) %>%
+  group_by(id) %>%
+  dplyr::count(unigram) %>%
+  bind_tf_idf(unigram, id, n) %>%
+  cast_dtm(id, unigram, tf_idf)
+
+sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
+unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
 
 ## Create DocumentTermMatrix for Bigram model based on Stemming
 bistem_textDTM <- text_tidy %>%
@@ -222,8 +240,8 @@ nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(train.uni[,1:887], train.uni[,888], mtry = 100, replace = TRUE,
-                         importance = TRUE, ntree = 1000,
+rf_model <- randomForest(train.uni[,1:887], train.uni[,888], mtry = 29, replace = TRUE,
+                         importance = TRUE, ntree = 75,
                          control = rpart.control(minsplit = 2, cp = 0))
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
