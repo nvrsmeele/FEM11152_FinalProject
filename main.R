@@ -69,7 +69,7 @@ reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
                            to = c("1-2", "1-2", "4-5", "4-5"))
 
 # Clean work environment to free memory
-rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
+rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
@@ -188,8 +188,8 @@ samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
 train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
 test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
 
-ytrain.uni <- train.uni[,829] # declare training response variable
-xtrain.uni <- train.uni[,1:828] # declare training predictor variables
+ytrain.uni <- train.uni[,830] # declare training response variable
+xtrain.uni <- train.uni[,1:829] # declare training predictor variables
 
 ##----
 ## Split unilemm_textDTM randomly for training/text
@@ -205,8 +205,8 @@ xtrain.lemm <- train.lemm[, c(1:734, 736:893)]
 # DownSample
 #----
 trainDown <- downSample(xtrain.uni, ytrain.uni, yname = "stars")
-xtrainDown.uni <- trainDown[,1:499]
-ytrainDown.uni <- trainDown[,500]
+xtrainDown.uni <- trainDown[,1:829]
+ytrainDown.uni <- trainDown[,830]
 
 ytest.uni <- test.uni[,888] # declare test response variable
 xtest.uni <- test.uni[,1:887] # declare test predictor variables
@@ -234,25 +234,25 @@ xtest.bi <- test.bi[,1:104] # declare test predictor variables
 ## multi-class Naive Bayes Classifier (base model)
 
 # Step1: Create NB classifier
-nb_model <- multinomial_naive_bayes(as.matrix(xtrain.uni), ytrain.uni)
+nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown.uni), ytrainDown.uni)
 
 # Step 2: Generate predictions of the NB classifier
 pred <- predict(nb_model, data = test.uni, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
-nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
+nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
 
 ##----
 ## Random Forest Classifier
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(xtrain.lemm, ytrain.lemm, mtry = 30, replace = TRUE,
+rf_model <- randomForest(xtrain.uni, ytrain.uni, mtry = 29, replace = TRUE,
                          importance = TRUE, ntree = 75, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
 
-pred <- predict(rf_model, data = test.lemm, type = "class")
-rf_cfm <- confusionMatrix(data = pred, reference = ytrain.lemm)
+pred <- predict(rf_model, data = test.uni, type = "class")
+rf_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
 plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
@@ -295,9 +295,9 @@ rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 ##----
 ## XGBoost Classifier
 
-xgbtrain <- xgb.DMatrix(data = as.matrix(xtrainDown.uni), label = as.numeric(ytrainDown.uni)-1)
+xgbtrain <- xgb.DMatrix(data = as.matrix(xtrain.uni), label = as.numeric(ytrain.uni)-1)
 
-numberOfClasses <- length(unique(ytrainDown.uni))
+numberOfClasses <- length(unique(ytrain.uni))
 xgb_params <- list("objective" = "multi:softprob",
                    "eval_metric" = "mlogloss",
                    "num_class" = numberOfClasses)
@@ -314,7 +314,9 @@ cv_model <- xgb.cv(params = xgb_params,
 
 OOF_prediction <- data.frame(cv_model$pred) %>%
   mutate(max_prob = max.col(., ties.method = "last"),
-         label = ytrainDown.uni)
+         label = ytrain.uni)
+
+OOF_prediction$label <- mapvalues(OOF_prediction$label, from = c("1-2", "3", "4-5"), to = c("1", "2", "3"))
 
 confusionMatrix(factor(OOF_prediction$max_prob),
                 factor(OOF_prediction$label),
