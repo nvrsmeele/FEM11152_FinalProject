@@ -9,9 +9,9 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
-library(tokenizers)
+#library(tokenizers)
 library(lexicon)
-library(tidytext)
+#library(tidytext)
 library(naivebayes)
 library(caret)
 library(randomForest)
@@ -20,13 +20,6 @@ library(xgboost)
 library(readr)
 library(stringr)
 library(car)
-
-#----------------------
-library(tokenizers)
-library(SentimentAnalysis)
-library(ggplot2)
-library(SnowballC)
-#----------------------
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
@@ -81,7 +74,6 @@ reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
 #samp <- sample(nrow(reviews_subset), size = 75000)
 #reviews_final <- reviews_subset[samp,]
 
-
 # Clean work environment to free memory
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
 
@@ -92,12 +84,16 @@ rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
 #text <- VCorpus(VectorSource(reviews_final$text))
 text <- VCorpus(VectorSource(reviews_subset$text))
 
+# Declare Lemmatization Dictionary
+lemma <- function(x) lemmatize_strings(x, dictionary = lexicon::hash_internet_slang)
+
 # Corpus text cleaning
 text <- tm_map(text, stripWhitespace)
 text <- tm_map(text, content_transformer(tolower))
 text <- tm_map(text, removeWords, stopwords("english"))
 text <- tm_map(text, removePunctuation)
 text <- tm_map(text, removeNumbers)
+text_lemm <- tm_map(text, content_transformer(lemma))
 text_stem <- tm_map(text, stemDocument)
 
 #----
@@ -111,24 +107,8 @@ text_vec$id <- as.integer(text_vec$id)
 text_lemma <- text_vec %>%
   lemmatize_strings(text, dictionary = lexicon::hash_nrc_emotions)
 
-bistem_textDTM <- text_tidy %>%
-  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
-  group_by(id) %>%
-  dplyr::count(bigram) %>%
-  bind_tf_idf(bigram, id, n) %>%
-  cast_dtm(id, bigram, tf_idf)
 #----
 
-# Create Corpus + text cleaning for 3 classes
-#----
-text3 <- VCorpus(VectorSource(reviews_final3$text))
-text3 <- tm_map(text3, stripWhitespace)
-text3 <- tm_map(text3, content_transformer(tolower))
-text3 <- tm_map(text3, removeWords, stopwords("english"))
-text3 <- tm_map(text3, removePunctuation)
-text3 <- tm_map(text3, removeNumbers)
-text_stem3 <- tm_map(text3, stemDocument)
-#----
 
 ##----
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
@@ -136,24 +116,40 @@ text_stem3 <- tm_map(text3, stemDocument)
 # Unigram model based on Stemming (base model)
 unistem_textDTM <- DocumentTermMatrix(text_stem,
                    control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+
 sparse <- removeSparseTerms(unistem_textDTM, 0.98) # remove sparse terms
 unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
 unistem_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
 
+# Unigram model based on Lemmatization
+unilemm_textDTM <- DocumentTermMatrix(text_lemm,
+                   control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+
+sparse <- removeSparseTerms(unilemm_textDTM, 0.98) # remove sparse terms
+unilemm_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+unilemm_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+
+match("stars", names(unilemm_textDTM)) # check index of dependent variable
+
 # Bigram model based on Stemming
-library(RWeka)
-bigramToken <- function(x){
-  tokenize_ngrams(x, n = 2)
+#----
+# Customer function for bigram
+bitoken <-  function(x){
+  unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
 }
 
-
 bistem_textDTM <- DocumentTermMatrix(text_stem,
-                  control = list(tokenize = bigramToken,
-                  weighting = function(x) weightTfIdf(x, normalize = FALSE)))
-sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
-unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-unistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
+                  control = list(tokenize = bitoken,
+                  weighting = function(x) weightTfIdf(x, normalize = TRUE)))
 
+sparse <- removeSparseTerms(bistem_textDTM, 0.99) # remove sparse terms
+bistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
+bistem_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+rownames(bistem_textDTM) <- rownames(reviews_subset) # add document ID's to rows
+
+#----
+# Test with tidytext
+#----
 # Bigram model based on Stemming
 text_tidy <- tidy(text_stem)
 text_tidy$id <- as.integer(text_tidy$id)
@@ -168,12 +164,39 @@ bistem_textDTM <- text_tidy %>%
 
 sparse <- removeSparseTerms(bistem_textDTM, 0.99) # remove sparse terms
 bistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-bistem_textDTM$stars <- reviews_final$stars # add dependent variable to matrix
+bistem_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+#----
 
-# Unigram model based on Lemmatization
+#----
+# Test with text2vec
+#----
+library(text2vec)
 
-# Bigram model based on Lemmatization
+reviews_subset$docID <- rownames(reviews_subset)
 
+# define preprocessing function and tokenization function
+prep_fun <- tolower
+tok_fun <- word_tokenizer
+
+it <- tr_te %$%
+  str_to_lower(txt) %>%
+  str_replace_all("[^[:alpha:]]", " ") %>%
+  str_replace_all("\\s+", " ") %>%
+  tokenize_word_stems(language = "russian") %>% 
+  itoken()
+
+it_train <- itoken(reviews_subset$text, 
+                   preprocessor = prep_fun, 
+                   tokenizer = tok_fun, 
+                   ids = reviews_subset$docID, 
+                   progressbar = TRUE)
+
+vocab <- create_vocabulary(it_train)
+vocab$term <- stemDocument(vocab$term)
+
+vectorizer <- vocab_vectorizer(vocab)
+dtm_train <- create_dtm(it_train, vectorizer)
+#----
 
 #----
 # 2. Model building preparation
@@ -186,9 +209,22 @@ samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
 train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
 test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
 
-ytrain.uni <- train.uni[,500] # declare training response variable
-xtrain.uni <- train.uni[,1:499] # declare training predictor variables
+ytrain.uni <- train.uni[,499] # declare training response variable
+xtrain.uni <- train.uni[,1:498] # declare training predictor variables
 
+##----
+## Split unilemm_textDTM randomly for training/text
+set.seed(112)
+samp <- sample.split(unilemm_textDTM$stars, SplitRatio = 2/3)
+train.lemm <- subset(unilemm_textDTM, samp == TRUE)
+test.lemm <- subset(unilemm_textDTM, samp == FALSE)
+
+ytrain.lemm <- train.lemm[, 402]
+xtrain.lemm <- train.lemm[, c(1:401, 403:488)]
+
+#----
+# DownSample
+#----
 trainDown <- downSample(xtrain.uni, ytrain.uni, yname = "stars")
 xtrainDown.uni <- trainDown[,1:499]
 ytrainDown.uni <- trainDown[,500]
@@ -209,18 +245,6 @@ ytest.bi <- test.bi[,105] # declare test response variable
 xtest.bi <- test.bi[,1:104] # declare test predictor variables
 
 ##----
-## Clean work environment to free memory
-rm(text, text_stem, sparse, text_tidy, samp)
-
-##----
-## Separate dependent/independent variables in training set???
-x_train <- train[,1:887]
-y_train <- train[,888]
-
-train_down <- downSample(x_train, y_train, yname = "Stars")
-
-x_trainDown <- train_down[,1:887]
-y_trainDown <- train_down[,888]
 
 
 #----
@@ -231,13 +255,13 @@ y_trainDown <- train_down[,888]
 ## multi-class Naive Bayes Classifier (base model)
 
 # Step1: Create NB classifier
-nb_model <- multinomial_naive_bayes(as.matrix(xtrain.uni), ytrain.uni)
+nb_model <- multinomial_naive_bayes(as.matrix(xtrain.lemm), ytrain.lemm)
 
 # Step 2: Generate predictions of the NB classifier
-pred <- predict(nb_model, data = test.uni, type = "class")
+pred <- predict(nb_model, data = test.lemm, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
-nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
+nb_cfm <- confusionMatrix(data = pred, reference = ytrain.lemm)
 
 ##----
 ## Random Forest Classifier
