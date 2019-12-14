@@ -9,9 +9,7 @@ library(plyr)
 library(caTools)
 library(tm)
 library(textstem)
-#library(tokenizers)
 library(lexicon)
-#library(tidytext)
 library(naivebayes)
 library(caret)
 library(randomForest)
@@ -34,14 +32,14 @@ yelp_business <- read_csv("yelp_academic_dataset_business.csv")
 
 # Remove unnecessary columns
 business <- yelp_business[, c(-2:-10, -12:-22, -24:-37)]
-business <- business[, c(-5:-27, -29:-31, -33:-71)]
+business <- business[, c(-5:-26, -29:-31, -33:-71)]
 
 # Rename columns
 business$business_name <- business$name
 business <- business[,-3]
 
 business$avg_stars <- business$stars
-business <- business[,-5]
+business <- business[,-6]
 
 # Split character value in "Categories" variable
 business$categories <- strsplit(business$categories, split = ";")
@@ -52,27 +50,23 @@ business$categories <- strsplit(business$categories, split = ";")
 # Merge dfs "business" and "yelp_reviews"
 reviews_full <- inner_join(yelp_reviews, business)
 
-# Create df "reviews" as subset of all restaurants
+# Create df "reviews" as subset of all "Diner" restaurants
 reviews_subset <- reviews_full[which(grepl("Diners", reviews_full$categories)),]
+reviews <- subset(reviews_subset, subset = open == TRUE)  # remove all closed diners
+reviews <- subset(reviews, subset = review_count > 20) # remove bias
 
 ##----
 ## 1.3 Dataset "reviews_subset" and create workable dataset as "reviews_final"
 
 # Check data structure
-str(reviews_subset)
+str(reviews)
 
 # (re-)Factor dependent variable "Stars"
-reviews_subset$stars <- factor(reviews_subset$stars, ordered = TRUE)
+reviews$stars <- factor(reviews$stars, ordered = TRUE)
 
 # Create df with dependent variable "Stars" as 3 classes
-#reviews_3class <- reviews_subset
-#reviews_subset$stars <- mapvalues(reviews_subset$stars, from = c("1", "2", "4", "5"),
-#                           to = c("1-2", "1-2", "4-5", "4-5"))
-
-# Create dataset "reviews_final" with n = 350,000 by random selection
-#set.seed(100)
-#samp <- sample(nrow(reviews_subset), size = 75000)
-#reviews_final <- reviews_subset[samp,]
+reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
+                           to = c("1-2", "1-2", "4-5", "4-5"))
 
 # Clean work environment to free memory
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
@@ -81,8 +75,7 @@ rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset,samp)
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
 
 # Create a VCorpus
-#text <- VCorpus(VectorSource(reviews_final$text))
-text <- VCorpus(VectorSource(reviews_subset$text))
+text <- VCorpus(VectorSource(reviews$text))
 
 # Declare Lemmatization Dictionary
 lemma <- function(x) lemmatize_strings(x, dictionary = lexicon::hash_internet_slang)
@@ -96,20 +89,6 @@ text <- tm_map(text, removeNumbers)
 text_lemm <- tm_map(text, content_transformer(lemma))
 text_stem <- tm_map(text, stemDocument)
 
-#----
-# Concept for Lemmatization
-#----
-text_lemma <- tm_map(text, lemmatize_words)
-text_vec <- tidy(text)
-text_vec$text <- as.String(text_vec$text)
-text_vec$id <- as.integer(text_vec$id)
-
-text_lemma <- text_vec %>%
-  lemmatize_strings(text, dictionary = lexicon::hash_nrc_emotions)
-
-#----
-
-
 ##----
 ## 1.5 Ngram modeling based on tf-idf, and remove sparse terms
 
@@ -117,17 +96,17 @@ text_lemma <- text_vec %>%
 unistem_textDTM <- DocumentTermMatrix(text_stem,
                    control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
 
-sparse <- removeSparseTerms(unistem_textDTM, 0.98) # remove sparse terms
+sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
 unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-unistem_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+unistem_textDTM$stars <- reviews$stars # add dependent variable to matrix
 
 # Unigram model based on Lemmatization
 unilemm_textDTM <- DocumentTermMatrix(text_lemm,
                    control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
 
-sparse <- removeSparseTerms(unilemm_textDTM, 0.98) # remove sparse terms
+sparse <- removeSparseTerms(unilemm_textDTM, 0.99) # remove sparse terms
 unilemm_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-unilemm_textDTM$stars <- reviews_subset$stars # add dependent variable to matrix
+unilemm_textDTM$stars <- reviews$stars # add dependent variable to matrix
 
 match("stars", names(unilemm_textDTM)) # check index of dependent variable
 
@@ -209,8 +188,8 @@ samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
 train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
 test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
 
-ytrain.uni <- train.uni[,499] # declare training response variable
-xtrain.uni <- train.uni[,1:498] # declare training predictor variables
+ytrain.uni <- train.uni[,829] # declare training response variable
+xtrain.uni <- train.uni[,1:828] # declare training predictor variables
 
 ##----
 ## Split unilemm_textDTM randomly for training/text
@@ -219,8 +198,8 @@ samp <- sample.split(unilemm_textDTM$stars, SplitRatio = 2/3)
 train.lemm <- subset(unilemm_textDTM, samp == TRUE)
 test.lemm <- subset(unilemm_textDTM, samp == FALSE)
 
-ytrain.lemm <- train.lemm[, 402]
-xtrain.lemm <- train.lemm[, c(1:401, 403:488)]
+ytrain.lemm <- train.lemm[, 735]
+xtrain.lemm <- train.lemm[, c(1:734, 736:893)]
 
 #----
 # DownSample
@@ -255,25 +234,25 @@ xtest.bi <- test.bi[,1:104] # declare test predictor variables
 ## multi-class Naive Bayes Classifier (base model)
 
 # Step1: Create NB classifier
-nb_model <- multinomial_naive_bayes(as.matrix(xtrain.lemm), ytrain.lemm)
+nb_model <- multinomial_naive_bayes(as.matrix(xtrain.uni), ytrain.uni)
 
 # Step 2: Generate predictions of the NB classifier
-pred <- predict(nb_model, data = test.lemm, type = "class")
+pred <- predict(nb_model, data = test.uni, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
-nb_cfm <- confusionMatrix(data = pred, reference = ytrain.lemm)
+nb_cfm <- confusionMatrix(data = pred, reference = ytrain.uni)
 
 ##----
 ## Random Forest Classifier
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(xtrainDown.uni, ytrainDown.uni, mtry = 22, replace = TRUE,
+rf_model <- randomForest(xtrain.lemm, ytrain.lemm, mtry = 30, replace = TRUE,
                          importance = TRUE, ntree = 75, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
 
-pred <- predict(rf_model, data = test.uni, type = "class")
-rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
+pred <- predict(rf_model, data = test.lemm, type = "class")
+rf_cfm <- confusionMatrix(data = pred, reference = ytrain.lemm)
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
 plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
@@ -378,59 +357,6 @@ trained_model <- model %>% fit(
 )
 
 
-
-
-
-
-#----
-# https://www.kaggle.com/amhchiu/bag-of-ingredients-in-r
-#----
-
-# Create Training/Test
-temp <- sample(nrow(reviews), size=233333)
-train <- reviews[temp,]
-test <- reviews[-temp,]
-
-# Create Corpus
-text <- Corpus(VectorSource(train$text))
-
-# Cleaning
-text <- tm_map(text, stripWhitespace)
-text <- tm_map(text, content_transformer(tolower))
-text <- tm_map(text, removeWords, stopwords("english"))
-text <- tm_map(text, stemDocument)
-
-# Create Document Term Matrix
-textDTM <- DocumentTermMatrix(text)
-
-# Feature selection
-sparse <- removeSparseTerms(textDTM, 0.99)
-## This function takes a second parameters, the sparsity threshold.
-## The sparsity threshold works as follows.
-## If we say 0.98, this means to only keep terms that appear in 2% or more of the recipes.
-## If we say 0.99, that means to only keep terms that appear in 1% or more of the recipes.
-
-textDTM <- as.data.frame(as.matrix(sparse))
-## Add the dependent variable to the data.frame
-textDTM$stars <- as.factor(train$stars)
-
-# Create Model
-x <- sample(nrow(textDTM), size = 77778)
-intrain <- textDTM[x,]
-intest <- textDTM[-x,]
-
-library(naivebayes)
-
-x <- as.matrix(intrain[,1:891])
-y <- intrain[,892]
-
-model <- multinomial_naive_bayes(x, y)
-pred <- predict(model, data = intest, type = "class")
-
-library(caret)
-
-cfm <- confusionMatrix(pred, intrain$stars)
-cfm
 
 
 #----
