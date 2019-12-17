@@ -178,7 +178,7 @@ nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace =
 
 # Step 2: Generate predictions of the NB classifier
 #pred <- predict(nb_model, data = test, method = "class")
-pred <- predict(nb_model, as.matrix(test[,1:11]), type = "prob")
+pred <- predict(nb_model, data = test, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
 nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
@@ -189,7 +189,7 @@ library(iml)
 
 pred_nb <- function(model, newdata){
   newdata <- as.matrix(newdata)
-  predict(model, newdata, method = "prob")
+  predict(model, newdata, method = "class")
 }
 
 # Feature importance
@@ -199,14 +199,62 @@ predictor <- Predictor$new(nb_model, data = xtest, type = "class",
 
 # Multinomial
 predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest == "4-5", class = 3, predict.fun = pred_nb)
+                           y = ytest == "1-2", class = 1, predict.fun = pred_nb)
 
 imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
 
 imp$plot()
 
 
+# Random Forest classifier
+# Step 1: Run initial Random Forest model
+set.seed(200)
+rf_model <- randomForest(xtrain, ytrain, mtry = 3, replace = TRUE,
+                         importance = TRUE, ntree = 1000, do.trace = TRUE,
+                         control = rpart.control(minsplit = 2, cp = 0))
 
+pred <- predict(rf_model, data = test, type = "class")
+rf_cfm <- confusionMatrix(data = pred, reference = ytrain)
+rf_model$importance
+
+# Step 2: Find OOB error convergence to determine 'best' ntree
+plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
+     ylab = "OOB error", main = "Random Forest classifier", las = 1)
+abline(v = 500, col = "red", lty = 3)
+
+# Step 3: Find 'best' mtry
+mtry_err <- vector(length = 12) # initialize empty vector
+
+# Run 12-times random forest model and obtain OOB estimated error per interation
+for(i in 1:12){
+  set.seed(205)
+  temp <- randomForest(Revenue ~ ., data = train, mtry = i, replace = TRUE,
+                       importance = TRUE, ntree=500,
+                       control = rpart.control(minsplit = 2, cp = 0))
+  mtry_err[i] <- temp$err.rate[500,1]
+}
+
+# Store all 12 OOB estimated errors in matrix
+mtry <- c(1:12)
+mtry_mx <- data.frame(cbind(mtry, mtry_err))
+
+# Visualize OOB error per mtry
+plot(mtry_mx$mtry, mtry_mx$mtry_err, type = "b", pch=19,
+     xlab = "Number of predictors",
+     ylab = "OOB error", main = "Random Forest predictor parameter")
+abline(v = 5, col = "red", lty = 3)
+
+# Step 4: Run final Random Forest model
+set.seed(215)
+rf_best <- randomForest(Revenue ~ ., data = train, mtry = 4, replace = TRUE,
+                        importance = TRUE, ntree=500, xtest = xtest, ytest = ytest,
+                        control = rpart.control(minsplit = 2, cp = 0))
+
+# Step 5: Performance evaluation by OOB estimated error/accuracy
+rf_ooberr <- round(rf_best$err.rate[500,1], digits = 4)
+rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
+
+# XGBOOST CLASSIFIER
 
 
 
@@ -555,14 +603,14 @@ rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 ##----
 ## XGBoost Classifier
 
-xgbtrain <- xgb.DMatrix(data = as.matrix(xtrainDown), label = as.numeric(ytrainDown)-1)
+xgbtrain <- xgb.DMatrix(data = as.matrix(xtrain), label = as.numeric(ytrain)-1)
 
-numberOfClasses <- length(unique(ytrainDown))
+numberOfClasses <- length(unique(ytrain))
 xgb_params <- list("objective" = "multi:softprob",
                    "eval_metric" = "mlogloss",
                    "num_class" = numberOfClasses)
 nround    <- 50 # number of XGBoost rounds
-cv.nfold  <- 5
+cv.nfold  <- 10
 
 # Fit cv.nfold * cv.nround XGB models and save OOF predictions
 cv_model <- xgb.cv(params = xgb_params,
@@ -574,7 +622,7 @@ cv_model <- xgb.cv(params = xgb_params,
 
 OOF_prediction <- data.frame(cv_model$pred) %>%
   mutate(max_prob = max.col(., ties.method = "last"),
-         label = ytrainDown)
+         label = ytrain)
 
 OOF_prediction$label <- mapvalues(OOF_prediction$label, from = c("1-2", "3", "4-5"), to = c("1", "2", "3"))
 
@@ -616,6 +664,7 @@ trained_model <- model %>% fit(
   validation_split = 0.2,
 )
 
+model %>% evaluate(xtest, ytest.bin)
 
 
 
