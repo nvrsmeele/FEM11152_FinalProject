@@ -63,8 +63,8 @@ str(reviews)
 
 # (re-)Factor dependent variable "Stars"
 reviews$stars <- factor(reviews$stars, ordered = TRUE)
-#reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
-#                               to = c("1-2", "1-2", "4-5", "4-5"))
+reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
+                               to = c("1-2", "1-2", "4-5", "4-5"))
 
 # Create new "Sentiment" variable
 reviews$sentiment <- reviews$stars
@@ -78,6 +78,166 @@ rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
+# Experiment LDA with tidytext
+#----
+library(topicmodels)
+library(tidytext)
+
+lda <- LDA(unistem_textDTM, k = 20)
+lda_doc <- tidy(lda, matrix = "gamma")
+
+#----
+# Experiment data cleaning text2vec
+#----
+text_clean <- function(x){
+  require("tm")
+  x <- stripWhitespace(x)
+  x <- iconv(x, "latin1", "ASCII", sub="")  # keep only ASCII characters
+  x <- tolower(x)
+  x <- removePunctuation(x)
+  x <- removeWords(x, stopwords("english"))
+  x <- removeNumbers(x)
+  x <- stemDocument(x)
+  return(x)
+}
+
+library(text2vec)
+
+reviews$doc_id <- rownames(reviews)
+
+it_m <- itoken(reviews$text,
+              preprocessor = text_clean,
+              tokenizer = word_tokenizer,
+              ids = reviews$doc_id)
+
+vocab <- create_vocabulary(it_m
+                          #,ngram = c(1L, 2L)
+                          )
+
+pruned_vocab <- prune_vocabulary(vocab, doc_proportion_min = 0.01)
+
+vectorizer <- vocab_vectorizer(pruned_vocab)
+
+dtm <- create_dtm(it_m, vectorizer)
+
+
+
+#----
+# LDA modeling textminer
+#----
+library(textmineR)
+
+coh <- numeric(20)
+
+# HOW TO TUNE ALPHA/BETA???? IMPLEMENT THIS!!
+for (i in 1:20) {
+  set.seed(12345)
+  mod <- FitLdaModel(dtm = dtm, k = i, iterations = 500, calc_coherence = TRUE,
+                     alpha = 0.1)
+  coh[i] <- mean(mod$coherence)
+  print(i)
+}
+
+
+ntopics <- seq(1, 20, by = 1)
+
+plot(ntopics, coh, type = "l")
+
+# Best model
+lda_best <- FitLdaModel(dtm, k = 11, iterations = 500, alpha = 0.1,
+                        calc_coherence = TRUE, calc_r2 = TRUE, calc_likelihood = TRUE)
+
+# Visualize top terms per topic
+topTerms <- GetTopTerms(phi = lda_best$phi, M = 10)
+
+# Convert topics to feature vectors
+topic_features <- as.data.frame(lda_best$theta)
+
+# Convert modeling df
+topic_features$stars <- reviews$stars
+
+# Create training/testing set
+set.seed(111)
+samp <- sample.split(topic_features$stars, SplitRatio = 2/3)
+train <- subset(topic_features, samp == TRUE) # declare training set
+test <- subset(topic_features, samp == FALSE) # declare test set
+
+ytrain <- train[,12] # declare training response variable
+xtrain <- train[,1:11] # declare training predictor variables
+
+trainDown <- downSample(xtrain, ytrain, yname = "stars")
+xtrainDown <- trainDown[,1:11]
+ytrainDown <- trainDown[,12]
+
+ytest <- test[,12] # declare test response variable
+xtest <- test[,1:11] # declare test predictor variables
+
+# Step1: Create NB classifier
+nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
+#nb_model <- bernoulli_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
+
+# Step 2: Generate predictions of the NB classifier
+#pred <- predict(nb_model, data = test, method = "class")
+pred <- predict(nb_model, as.matrix(test[,1:11]), type = "prob")
+
+# Step 3: Create confusion matrix of NB's prediction performance
+nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
+
+
+# Permutation Feature Importance
+library(iml)
+
+pred_nb <- function(model, newdata){
+  newdata <- as.matrix(newdata)
+  predict(model, newdata, method = "prob")
+}
+
+# Feature importance
+# Bernoulli
+predictor <- Predictor$new(nb_model, data = xtest, type = "class",
+                           y = ytest, predict.fun = pred_nb)
+
+# Multinomial
+predictor <- Predictor$new(nb_model, data = xtest, type = "class",
+                           y = ytest == "4-5", class = 3, predict.fun = pred_nb)
+
+imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
+
+imp$plot()
+
+
+
+
+
+
+
+
+
+#----
+#LDA MODELLING topicmodels
+#----
+library(topicmodels)
+
+log_lik <- numeric(20)
+perplexity <- numeric(20)
+
+for(i in 2:20){
+  mod <- topicmodels::LDA(unistem_textDTM, k = i, method = "Gibbs",
+         control = list(alpha = 0.5, iter = 500, seed = 12345, thin = 1, verbose = 1))
+    
+  log_lik[i] <- topicmodels::logLik(mod)
+  perplexity[i] <- topicmodels::perplexity(mod, unistem_textDTM)
+}
+
+mod_ok <- topicmodels::LDA(unistem_textDTM, k = 2, method = "Gibbs",
+                        control = list(alpha = 0.5, iter = 1000, seed = 12345, thin = 1, verbose = 1))
+
+
+x <- seq(1, 20, by = 1)
+
+plot(x, perplexity, type = "l")
+#----
+
 
 # Create a VCorpus
 text <- VCorpus(VectorSource(reviews$text))
@@ -99,11 +259,11 @@ text_stem <- tm_map(text, stemDocument)
 
 # Unigram model based on Stemming (base model)
 unistem_textDTM <- DocumentTermMatrix(text_stem,
-                   control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE)))
+                   control = list(weighting = function(x) weightTf(x)))
 
-sparse <- removeSparseTerms(unistem_textDTM, 0.99) # remove sparse terms
+sparse <- removeSparseTerms(unistem_textDTM, 0.98) # remove sparse terms
 unistem_textDTM <- as.data.frame(as.matrix(sparse)) # convert dtm to matrix
-unistem_textDTM$sentiment <- reviews$sentiment # add dependent variable to matrix
+unistem_textDTM$stars <- reviews$stars # add dependent variable to matrix
 
 # Unigram model based on Lemmatization
 unilemm_textDTM <- DocumentTermMatrix(text_lemm,
@@ -189,12 +349,12 @@ dtm_train <- create_dtm(it_train, vectorizer)
 ##----
 ## Split unistem_textDTM randomly for training/test
 set.seed(111)
-samp <- sample.split(unistem_textDTM$sentiment, SplitRatio = 2/3)
+samp <- sample.split(unistem_textDTM$stars, SplitRatio = 2/3)
 train.uni <- subset(unistem_textDTM, samp == TRUE) # declare training set
 test.uni <- subset(unistem_textDTM, samp == FALSE) # declare test set
 
-ytrain.uni <- train.uni[,830] # declare training response variable
-xtrain.uni <- train.uni[,1:829] # declare training predictor variables
+ytrain.uni <- train.uni[,504] # declare training response variable
+xtrain.uni <- train.uni[,1:503] # declare training predictor variables
 
 ##----
 ## Split unilemm_textDTM randomly for training/text
@@ -209,12 +369,12 @@ xtrain.lemm <- train.lemm[, c(1:739, 741:898)]
 #----
 # DownSample
 #----
-trainDown <- downSample(xtrain.uni, ytrain.uni, yname = "sentiment")
-xtrainDown.uni <- trainDown[,1:829]
-ytrainDown.uni <- trainDown[,830]
+trainDown <- downSample(xtrain.uni, ytrain.uni, yname = "stars")
+xtrainDown.uni <- trainDown[,1:503]
+ytrainDown.uni <- trainDown[,504]
 
-ytest.uni <- test.uni[,830] # declare test response variable
-xtest.uni <- test.uni[,1:829] # declare test predictor variables
+ytest.uni <- test.uni[,504] # declare test response variable
+xtest.uni <- test.uni[,1:503] # declare test predictor variables
 
 ## Split bistem_textDTM randomly for training/test
 set.seed(150)
@@ -237,60 +397,81 @@ xtest.bi <- test.bi[,1:104] # declare test predictor variables
 
 ##----
 ## multi-class Naive Bayes Classifier (base model)
+library(naivebayes)
 
 # Step1: Create NB classifier
-nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown.uni), ytrainDown.uni, laplace = 0.5)
+nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
+nb_model
 
 # Step 2: Generate predictions of the NB classifier
-pred <- predict(nb_model, data = test.uni, method = "class")
+pred <- predict(nb_model, data = test, method = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
-nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
+nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
+
+# Step 4: Feature importance
+nb_coef <- coef(nb_model)
 
 #Test with VIP/LIME by using Caret
 #----
-trcontrol <- trainControl(method = "none")
 
-nb_model <- train(xtrainDown.uni, ytrainDown.uni,
+trcontrol <- trainControl(method="none")
+
+nb_model <- caret::train(xtrainDown, ytrainDown,
                   method = "naive_bayes",
                   tuneGrid = data.frame(laplace = 0.5,
                                         usekernel = FALSE,
                                         adjust = FALSE),
                   trControl = trcontrol)
 
+rf_model <- caret::train(xtrainDown, ytrainDown,
+                    method='rf', 
+                    trControl=trcontrol)  # to get probs along with classifications
+
+svm_model <- caret::train(xtrainDown, ytrainDown,
+                    method='svmLinear2',
+                    trControl=trcontrol,
+                    probability = TRUE)
+
 library(vip)
 
 
-vip(nb_model, num_features = 5, bar = TRUE)
+vip(lime::as.classifier(nb_model), num_features = 5, bar = TRUE)
 
 library(iml)
 
+pred_nb <- function(model, newdata){
+  newdata <- as.matrix(newdata[,1:11])
+  predict(model, newdata, method = "class")
+}
+
 # Feature importance
-predictor <- Predictor$new(nb_model, data = as.data.frame(xtest.uni),
-                           y = ytest.uni,
-                           predict.fun = function(model, newdata){
-                             
-                             predict(model, newdata)
 
-                           })
+predictor <- Predictor$new(nb_model, data = xtest, type = "prob",
+                           y = ytest)
 
+imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
 
-imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio',
-                     n.repetitions = 20)
+imp$plot()
+imp$results
 
 # LIME
 library(lime)
-explainer <- lime(x = xtrainDown.uni, model = nb_model, bin_continuous = FALSE)
+fff<-function(x){as.matrix(x)}
+
+explainer <- lime(x = xtrainDown, model = as_classifier(nb_model), preprocess=fff)
+explainer <- lime(x = xtrainDown, model = nb_model, preprocess=fff)
 
 explanation <- lime::explain (
-  xtrainDown.uni[5:6, ], # Select Jack and Rose
+  xtrainDown[10:11,], # Select Jack and Rose
   explainer    = explainer, 
   n_labels     = 1, # Explaining a single class
-  n_features   = 4, # Returns top-4 features critical to each case
+  n_features   = 5, # Returns top-4 features critical to each case
   kernel_width = 0.5) # Select kernel width
 
 plot_features (explanation) +
   labs (title = "LIME: Feature Importance Visualization")
+
 #----
 
 ##----
@@ -298,12 +479,12 @@ plot_features (explanation) +
 library(e1071)
 library(radiant.data)
 
-svm_model <- svm(sentiment ~., data = trainDown,
+svm_model <- svm(x = xtrainDown, y = ytrainDown,
                  type = "nu-classification", kernel = "polynomial")
 
-pred <- predict(svm_model, data = test.uni, method = "class")
+pred <- predict(svm_model, data = test, method = "class")
 
-svm_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
+svm_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 
 W <- t(svm_model$coefs) %*% svm_model$SV
 weights.df <- as.data.frame(t(W), row.names = NULL)
@@ -325,13 +506,13 @@ weights.df %>% group_by(V1 < 0) %>%
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(xtrainDown.uni, ytrainDown.uni, mtry = 29, replace = TRUE,
+rf_model <- randomForest(xtrainDown, ytrainDown, mtry = 3, replace = TRUE,
                          importance = TRUE, ntree = 75, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
 
-pred <- predict(rf_model, data = test.uni, type = "class")
-rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown.uni)
-
+pred <- predict(rf_model, data = test, type = "class")
+rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
+rf_model$importance
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
 plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
@@ -374,9 +555,9 @@ rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 ##----
 ## XGBoost Classifier
 
-xgbtrain <- xgb.DMatrix(data = as.matrix(xtrainDown.uni), label = as.numeric(ytrainDown.uni)-1)
+xgbtrain <- xgb.DMatrix(data = as.matrix(xtrainDown), label = as.numeric(ytrainDown)-1)
 
-numberOfClasses <- length(unique(ytrainDown.uni))
+numberOfClasses <- length(unique(ytrainDown))
 xgb_params <- list("objective" = "multi:softprob",
                    "eval_metric" = "mlogloss",
                    "num_class" = numberOfClasses)
@@ -393,7 +574,7 @@ cv_model <- xgb.cv(params = xgb_params,
 
 OOF_prediction <- data.frame(cv_model$pred) %>%
   mutate(max_prob = max.col(., ties.method = "last"),
-         label = ytrainDown.uni)
+         label = ytrainDown)
 
 OOF_prediction$label <- mapvalues(OOF_prediction$label, from = c("1-2", "3", "4-5"), to = c("1", "2", "3"))
 
@@ -412,25 +593,26 @@ library(reticulate)
 
 reticulate::use_python("/opt/anaconda3/envs/r-base/bin")
 
-xtrain.norm <- normalize(as.matrix(xtrain.uni))
-ytrain.bin <- to_categorical(as.numeric(ytrain.uni)-1, 3)
-ytest.bin <- to_categorical(as.numeric(ytest.uni)-1, 3)
+xtrain.norm <- normalize(as.matrix(xtrain))
+ytrain.bin <- to_categorical(as.numeric(ytrain)-1, 3)
+ytest.bin <- to_categorical(as.numeric(ytest)-1, 3)
 
 model <- keras_model_sequential() %>% 
-  layer_dense(units = 16, activation = "relu", input_shape = c(829)) %>%
+  layer_dense(units = 16, activation = "relu", input_shape = c(11)) %>%
+  layer_dense(units = 8, activation = "relu") %>%
   layer_dense(units = 3, activation = "softmax")
 
 model %>% compile(
-  optimizer = 'adam',
+  optimizer = optimizer_adam(),
   loss = 'categorical_crossentropy',
   metrics = list('accuracy')
 )
 
 trained_model <- model %>% fit(
-  as.matrix(xtrain.uni),
+  as.matrix(xtrain),
   ytrain.bin,
   epochs = 50,
-  batch_size = 650,
+  batch_size = 31,
   validation_split = 0.2,
 )
 
