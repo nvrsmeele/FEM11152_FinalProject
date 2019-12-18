@@ -127,10 +127,17 @@ lda_coh <- numeric(20)
 
 # Fit LDA model 20 times by iterating over topics and default alpha/beta
 for (i in 1:20) {
+  # Set random seed
   set.seed(12345)
+  
+  # Train LDA model
   temp <- FitLdaModel(dtm = text_dtm, k = i, iterations = 500, calc_coherence = TRUE,
                      alpha = 0.1, beta = 0.05)
+  
+  # Store coherence measure for each iteration
   lda_coh[i] <- mean(temp$coherence)
+  
+  # Print checkmark for each iteration
   print(i)
 }
 
@@ -144,8 +151,8 @@ plot(ntopics, lda_coh, type = "l") # plot coherence measure for all topics
 # Create grid search with alpha and beta values
 hyper_grid <- expand.grid(
   k = 11,
-  alpha = c(0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.55, 5, 5.5, 6, 6.5, 7),
-  beta = c(0, 0.1, 0.23, 0.3, 0.4, 0.5, 1, 1.5, 2, 2.5),
+  alpha = c(0.1, 3.5, 4, 4.55, 5, 6),
+  beta = c(0.1, 0.23, 0.5, 1),
   coherence = 0
 )
 
@@ -167,8 +174,16 @@ for (i in 1:nrow(hyper_grid)) {
 }
 
 # Obtain LDA model with highest coherence measure with tuned parameters
-lda_best <- FitLdaModel(dtm, k = 11, iterations = 500, alpha = 0.1,
-                        calc_coherence = TRUE, calc_r2 = TRUE, calc_likelihood = TRUE)
+best_par <- hyper_grid[which(hyper_grid$coherence == max(hyper_grid$coherence)),]
+k_opt <- best_par[1,1] # best k-topics parameter
+alpha_opt <- best_par[1,2] # best alpha parameter
+beta_opt <- best_par[1,3] # best beta parameter
+
+# Fit best LDA model with optimal parameters
+set.seed(123)
+lda_best <- FitLdaModel(text_dtm, k = k_opt, iterations = 500, alpha = alpha_opt,
+                        beta = beta_opt, calc_coherence = TRUE, calc_r2 = TRUE,
+                        calc_likelihood = TRUE)
 
 ##----
 ## 2.3 Determine latent topics and convert each to feature vector
@@ -179,9 +194,30 @@ topTerms <- GetTopTerms(phi = lda_best$phi, M = 10)
 # Convert topics to feature vectors
 topic_features <- as.data.frame(lda_best$theta)
 
-# Convert modeling df
-topic_features$stars <- reviews$stars
+# Re-name topics and merge overlapping topics in feature vectors
+topic_features$serving_time <- topic_features$t_1
+topic_features <- topic_features[, -1]
 
+topic_features$food_quality <- topic_features$t_2 + topic_features$t_8
+topic_features <- topic_features[, c(-1, -7)]
+
+topic_features$location <- topic_features$t_3
+topic_features <- topic_features[, -1]
+
+topic_features$price_quality <- topic_features$t_4
+topic_features <- topic_features[, -1]
+
+topic_features$menu_variation <- topic_features$t_5 + topic_features$t_6
+topic_features <- topic_features[, -1:-2]
+
+topic_features$breakfast_menu <- topic_features$t_7 + topic_features$t_9
+topic_features <- topic_features[, -1:-2]
+
+topic_features$dinner_menu <- topic_features$t_10 + topic_features$t_11
+topic_features <- topic_features[, -1:-2]
+
+# Add sentiment labels to df
+topic_features$stars <- reviews$stars
 
 # Experiment LDA with tidytext
 #----
