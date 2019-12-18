@@ -20,6 +20,11 @@ library(iml)
 #library(readr)
 #library(stringr)
 #library(car)
+library(keras)
+library(tensorflow)
+library(reticulate)
+
+reticulate::use_python("/opt/anaconda3/envs/r-base/bin")
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
@@ -219,16 +224,6 @@ topic_features <- topic_features[, -1:-2]
 # Add sentiment labels to df
 topic_features$stars <- reviews$stars
 
-# Experiment LDA with tidytext
-#----
-library(topicmodels)
-library(tidytext)
-
-lda <- LDA(unistem_textDTM, k = 20)
-lda_doc <- tidy(lda, matrix = "gamma")
-
-
-
 #----
 # 3. Preparation for classification modeling
 #----
@@ -278,55 +273,53 @@ nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 # Step 1: Run initial Random Forest model
 set.seed(200)
 rf_model <- randomForest(xtrainDown, ytrainDown, mtry = 3, replace = TRUE,
-                         importance = TRUE, ntree = 1000, do.trace = TRUE,
+                         importance = TRUE, ntree = 1500, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
-
-pred <- predict(rf_model, data = test, type = "class")
-rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
-rf_model$importance
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
 plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
      ylab = "OOB error", main = "Random Forest classifier", las = 1)
-abline(v = 500, col = "red", lty = 3)
+abline(v = 1000, col = "red", lty = 3)
 
 # Step 3: Find 'best' mtry
-mtry_err <- vector(length = 12) # initialize empty vector
+mtry_err <- vector(length = 7) # initialize empty vector
 
-# Run 12-times random forest model and obtain OOB estimated error per interation
-for(i in 1:12){
+# Run 7-times random forest model and obtain OOB estimated error per interation
+for(i in 1:7){
   set.seed(205)
-  temp <- randomForest(Revenue ~ ., data = train, mtry = i, replace = TRUE,
-                       importance = TRUE, ntree=500,
+  temp <- randomForest(xtrainDown, ytrainDown, mtry = i, replace = TRUE,
+                       importance = TRUE, ntree = 1000, do.trace = TRUE,
                        control = rpart.control(minsplit = 2, cp = 0))
-  mtry_err[i] <- temp$err.rate[500,1]
+  mtry_err[i] <- temp$err.rate[1000,1]
 }
 
-# Store all 12 OOB estimated errors in matrix
-mtry <- c(1:12)
+# Store all 7 OOB estimated errors in matrix
+mtry <- c(1:7)
 mtry_mx <- data.frame(cbind(mtry, mtry_err))
 
 # Visualize OOB error per mtry
 plot(mtry_mx$mtry, mtry_mx$mtry_err, type = "b", pch=19,
      xlab = "Number of predictors",
      ylab = "OOB error", main = "Random Forest predictor parameter")
-abline(v = 5, col = "red", lty = 3)
+abline(v = 2, col = "red", lty = 3)
 
 # Step 4: Run final Random Forest model
 set.seed(215)
-rf_best <- randomForest(Revenue ~ ., data = train, mtry = 4, replace = TRUE,
-                        importance = TRUE, ntree=500, xtest = xtest, ytest = ytest,
-                        control = rpart.control(minsplit = 2, cp = 0))
+rf_best <- randomForest(xtrainDown, ytrainDown, mtry = 2, replace = TRUE,
+                        importance = TRUE, ntree = 1000, xtest = xtest, ytest = ytest,
+                        do.trace = TRUE, control = rpart.control(minsplit = 2, cp = 0))
+
+rf_best$importance
 
 # Step 5: Performance evaluation by OOB estimated error/accuracy
-rf_ooberr <- round(rf_best$err.rate[500,1], digits = 4)
-rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
-
-##----
-## 4.3 Neural Network classifier
-
-
-
+rf_ooberr <- round(rf_best$err.rate[1000,1], digits = 4)
+rf_testerr <- round(rf_best$test[["err.rate"]][1000,1], digits = 4)
+rf_oobacc <- 1 - rf_ooberr
+rf_testacc <- 1 - rf_testerr
+rf_testpf <- rbind(rf_testerr, rf_testacc)
+rf_oobpf <- rbind(rf_ooberr, rf_oobacc)
+rf_perform <- as.matrix(cbind(rf_oobpf, rf_testpf))
+rownames(rf_perform) <- c("Error", "Accuracy")
 
 
 #----
@@ -342,14 +335,9 @@ pred_nb <- function(model, newdata){
   predict(model, newdata, method = "class")
 }
 
-# Feature importance
-# Bernoulli
-predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest, predict.fun = pred_nb)
-
 # Multinomial
 predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest == "1-2", class = 1, predict.fun = pred_nb)
+                           y = ytest == "3", class = 2, predict.fun = pred_nb)
 
 imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
 
@@ -750,8 +738,8 @@ ytrain.bin <- to_categorical(as.numeric(ytrain)-1, 3)
 ytest.bin <- to_categorical(as.numeric(ytest)-1, 3)
 
 model <- keras_model_sequential() %>% 
-  layer_dense(units = 16, activation = "relu", input_shape = c(11)) %>%
-  layer_dense(units = 8, activation = "relu") %>%
+  layer_dense(units = 6, activation = "relu", input_shape = c(7)) %>%
+  layer_dense(units = 4, activation = "relu") %>%
   layer_dense(units = 3, activation = "softmax")
 
 model %>% compile(
@@ -764,7 +752,7 @@ trained_model <- model %>% fit(
   as.matrix(xtrain),
   ytrain.bin,
   epochs = 50,
-  batch_size = 31,
+  batch_size = 32,
   validation_split = 0.2,
 )
 
