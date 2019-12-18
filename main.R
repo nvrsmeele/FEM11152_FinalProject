@@ -7,17 +7,18 @@ library(readr)
 library(dplyr)
 library(plyr)
 library(caTools)
-library(tm)
-library(textstem)
-library(lexicon)
+library(text2vec)
+library(textmineR)
+#library(tm)
+#library(textstem)
+#library(lexicon)
 library(naivebayes)
 library(caret)
 library(randomForest)
-library(rpart)
-library(xgboost)
-library(readr)
-library(stringr)
-library(car)
+#library(rpart)
+#library(readr)
+#library(stringr)
+#library(car)
 
 # Load full dataset
 yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
@@ -66,29 +67,23 @@ reviews$stars <- factor(reviews$stars, ordered = TRUE)
 reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
                                to = c("1-2", "1-2", "4-5", "4-5"))
 
+# Add "Document IDs" to dataframe
+reviews$doc_id <- rownames(reviews)
+
 # Create new "Sentiment" variable
-reviews$sentiment <- reviews$stars
+#reviews$sentiment <- reviews$stars
 
 # Create df with dependent variable "Stars" as 2 classes
-reviews$sentiment <- mapvalues(reviews$sentiment, from = c("1", "2", "3", "4", "5"),
-                     to = c("Not_awesome", "Not_awesome", "Not_awesome", "Awesome", "Awesome"))
+#reviews$sentiment <- mapvalues(reviews$sentiment, from = c("1", "2", "3", "4", "5"),
+#                     to = c("Not_awesome", "Not_awesome", "Not_awesome", "Awesome", "Awesome"))
 
 # Clean work environment to free memory
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset)
 
 ##----
 ## 1.4 Text data preprocessing (dataset "reviews_subset")
-# Experiment LDA with tidytext
-#----
-library(topicmodels)
-library(tidytext)
 
-lda <- LDA(unistem_textDTM, k = 20)
-lda_doc <- tidy(lda, matrix = "gamma")
-
-#----
-# Experiment data cleaning text2vec
-#----
+# Function for text cleaning to reduce noise
 text_clean <- function(x){
   require("tm")
   x <- stripWhitespace(x)
@@ -101,53 +96,80 @@ text_clean <- function(x){
   return(x)
 }
 
-library(text2vec)
-
-reviews$doc_id <- rownames(reviews)
-
-it_m <- itoken(reviews$text,
+# Word iterator initialization to create a vocabulary
+word_token <- itoken(reviews$text,
               preprocessor = text_clean,
               tokenizer = word_tokenizer,
               ids = reviews$doc_id)
 
-vocab <- create_vocabulary(it_m
-                          #,ngram = c(1L, 2L)
-                          )
+# Create unigram vocabulary
+vocab <- create_vocabulary(word_token, ngram = c(1L, 1L))
 
+# Prune vocabulary by removing words that occur less than 1% of all documents
 pruned_vocab <- prune_vocabulary(vocab, doc_proportion_min = 0.01)
 
+# Transform list of tokens into vector space
 vectorizer <- vocab_vectorizer(pruned_vocab)
 
-dtm <- create_dtm(it_m, vectorizer)
-
-
+# Create Document-term matrix
+text_dtm <- create_dtm(word_token, vectorizer)
 
 #----
-# LDA modeling textminer
+# 2. Latent Dirichlet Allocation (LDA) modeling
 #----
-library(textmineR)
 
-coh <- numeric(20)
+##----
+## 2.1 Find number of K-topics by default settings
 
-# HOW TO TUNE ALPHA/BETA???? IMPLEMENT THIS!!
+# Initialize empty numeric vector
+lda_coh <- numeric(20)
+
+# Fit LDA model 20 times by iterating over topics and default alpha/beta
 for (i in 1:20) {
   set.seed(12345)
-  mod <- FitLdaModel(dtm = dtm, k = i, iterations = 500, calc_coherence = TRUE,
-                     alpha = 0.1)
-  coh[i] <- mean(mod$coherence)
+  temp <- FitLdaModel(dtm = text_dtm, k = i, iterations = 500, calc_coherence = TRUE,
+                     alpha = 0.1, beta = 0.05)
+  lda_coh[i] <- mean(temp$coherence)
   print(i)
 }
 
+# Visualize coherence measure over 20 topics
+ntopics <- seq(1, 20, by = 1) # declare vector with number of topics
+plot(ntopics, lda_coh, type = "l") # plot coherence measure for all topics
 
-ntopics <- seq(1, 20, by = 1)
+##----
+## 2.2 Tune for alpha and beta
 
-plot(ntopics, coh, type = "l")
+# Create grid search with alpha and beta values
+hyper_grid <- expand.grid(
+  k = 11,
+  alpha = c(0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.55, 5, 5.5, 6, 6.5, 7),
+  beta = c(0, 0.1, 0.23, 0.3, 0.4, 0.5, 1, 1.5, 2, 2.5),
+  coherence = 0
+)
 
-# Best model
+# Run LDA model iteratively over hyper_grid
+for (i in 1:nrow(hyper_grid)) {
+  # Set random seed
+  set.seed(123)
+  
+  # Train LDA model
+  lda_tune <- FitLdaModel(dtm = text_dtm, k = hyper_grid$k[i], iterations = 500,
+                          alpha = hyper_grid$alpha[i], beta = hyper_grid$beta[i],
+                          calc_coherence = TRUE)
+  
+  # Store coherence measure for each iteration
+  hyper_grid$coherence[i] <- mean(lda_tune$coherence)
+}
+
+# Obtain LDA model with highest coherence measure with tuned parameters
 lda_best <- FitLdaModel(dtm, k = 11, iterations = 500, alpha = 0.1,
                         calc_coherence = TRUE, calc_r2 = TRUE, calc_likelihood = TRUE)
 
-# Visualize top terms per topic
+##----
+## 2.3 Determine latent topics and convert each to feature vector
+
+# Visualize top-10 terms per topic
 topTerms <- GetTopTerms(phi = lda_best$phi, M = 10)
 
 # Convert topics to feature vectors
@@ -156,7 +178,25 @@ topic_features <- as.data.frame(lda_best$theta)
 # Convert modeling df
 topic_features$stars <- reviews$stars
 
-# Create training/testing set
+
+# Experiment LDA with tidytext
+#----
+library(topicmodels)
+library(tidytext)
+
+lda <- LDA(unistem_textDTM, k = 20)
+lda_doc <- tidy(lda, matrix = "gamma")
+
+
+
+#----
+# 3. Preparation for classification modeling
+#----
+
+##----
+## 3.1 Create training & test set
+
+# Create training/testing set by random selection
 set.seed(111)
 samp <- sample.split(topic_features$stars, SplitRatio = 2/3)
 train <- subset(topic_features, samp == TRUE) # declare training set
@@ -165,12 +205,23 @@ test <- subset(topic_features, samp == FALSE) # declare test set
 ytrain <- train[,12] # declare training response variable
 xtrain <- train[,1:11] # declare training predictor variables
 
+##----
+## 3.2 Solve for imbalanced dataset
+
+# Downsample the training set to reduce bias towards "4-5" class
 trainDown <- downSample(xtrain, ytrain, yname = "stars")
 xtrainDown <- trainDown[,1:11]
 ytrainDown <- trainDown[,12]
 
 ytest <- test[,12] # declare test response variable
 xtest <- test[,1:11] # declare test predictor variables
+
+#----
+# 4. Classification modeling
+#----
+
+##----
+## 4.1 Naive Bayes classifier
 
 # Step1: Create NB classifier
 nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
