@@ -15,6 +15,7 @@ library(textmineR)
 library(naivebayes)
 library(caret)
 library(randomForest)
+library(iml)
 #library(rpart)
 #library(readr)
 #library(stringr)
@@ -160,6 +161,9 @@ for (i in 1:nrow(hyper_grid)) {
   
   # Store coherence measure for each iteration
   hyper_grid$coherence[i] <- mean(lda_tune$coherence)
+  
+  # Print checkmark for each iteration
+  print(i)
 }
 
 # Obtain LDA model with highest coherence measure with tuned parameters
@@ -205,6 +209,9 @@ test <- subset(topic_features, samp == FALSE) # declare test set
 ytrain <- train[,12] # declare training response variable
 xtrain <- train[,1:11] # declare training predictor variables
 
+ytest <- test[,12] # declare test response variable
+xtest <- test[,1:11] # declare test predictor variables
+
 ##----
 ## 3.2 Solve for imbalanced dataset
 
@@ -213,9 +220,6 @@ trainDown <- downSample(xtrain, ytrain, yname = "stars")
 xtrainDown <- trainDown[,1:11]
 ytrainDown <- trainDown[,12]
 
-ytest <- test[,12] # declare test response variable
-xtest <- test[,1:11] # declare test predictor variables
-
 #----
 # 4. Classification modeling
 #----
@@ -223,41 +227,18 @@ xtest <- test[,1:11] # declare test predictor variables
 ##----
 ## 4.1 Naive Bayes classifier
 
-# Step1: Create NB classifier
+# Step 1: Create NB classifier
 nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
-#nb_model <- bernoulli_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
 
 # Step 2: Generate predictions of the NB classifier
-#pred <- predict(nb_model, data = test, method = "class")
 pred <- predict(nb_model, data = test, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
 nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 
+##----
+## 4.2 Random Forest classifier
 
-# Permutation Feature Importance
-library(iml)
-
-pred_nb <- function(model, newdata){
-  newdata <- as.matrix(newdata)
-  predict(model, newdata, method = "class")
-}
-
-# Feature importance
-# Bernoulli
-predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest, predict.fun = pred_nb)
-
-# Multinomial
-predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest == "1-2", class = 1, predict.fun = pred_nb)
-
-imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
-
-imp$plot()
-
-
-# Random Forest classifier
 # Step 1: Run initial Random Forest model
 set.seed(200)
 rf_model <- randomForest(xtrain, ytrain, mtry = 3, replace = TRUE,
@@ -305,7 +286,43 @@ rf_best <- randomForest(Revenue ~ ., data = train, mtry = 4, replace = TRUE,
 rf_ooberr <- round(rf_best$err.rate[500,1], digits = 4)
 rf_testerr <- round(rf_best$test[["err.rate"]][500,1], digits = 4)
 
-# XGBOOST CLASSIFIER
+##----
+## 4.3 Neural Network classifier
+
+
+
+
+
+#----
+# 5. Best classifier interpretation
+#----
+
+##----
+## 5.1 Premutation Feature Importance
+
+# Prediction function
+pred_nb <- function(model, newdata){
+  newdata <- as.matrix(newdata)
+  predict(model, newdata, method = "class")
+}
+
+# Feature importance
+# Bernoulli
+predictor <- Predictor$new(nb_model, data = xtest, type = "class",
+                           y = ytest, predict.fun = pred_nb)
+
+# Multinomial
+predictor <- Predictor$new(nb_model, data = xtest, type = "class",
+                           y = ytest == "1-2", class = 1, predict.fun = pred_nb)
+
+imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
+
+imp$plot()
+
+
+
+
+
 
 
 
