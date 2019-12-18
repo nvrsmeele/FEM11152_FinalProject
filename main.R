@@ -242,19 +242,19 @@ samp <- sample.split(topic_features$stars, SplitRatio = 2/3)
 train <- subset(topic_features, samp == TRUE) # declare training set
 test <- subset(topic_features, samp == FALSE) # declare test set
 
-ytrain <- train[,12] # declare training response variable
-xtrain <- train[,1:11] # declare training predictor variables
+ytrain <- train[,8] # declare training response variable
+xtrain <- train[,1:7] # declare training predictor variables
 
-ytest <- test[,12] # declare test response variable
-xtest <- test[,1:11] # declare test predictor variables
+ytest <- test[,8] # declare test response variable
+xtest <- test[,1:7] # declare test predictor variables
 
 ##----
 ## 3.2 Solve for imbalanced dataset
 
 # Downsample the training set to reduce bias towards "4-5" class
 trainDown <- downSample(xtrain, ytrain, yname = "stars")
-xtrainDown <- trainDown[,1:11]
-ytrainDown <- trainDown[,12]
+xtrainDown <- trainDown[,1:7]
+ytrainDown <- trainDown[,8]
 
 #----
 # 4. Classification modeling
@@ -277,12 +277,12 @@ nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(xtrain, ytrain, mtry = 3, replace = TRUE,
+rf_model <- randomForest(xtrainDown, ytrainDown, mtry = 3, replace = TRUE,
                          importance = TRUE, ntree = 1000, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
 
 pred <- predict(rf_model, data = test, type = "class")
-rf_cfm <- confusionMatrix(data = pred, reference = ytrain)
+rf_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 rf_model$importance
 
 # Step 2: Find OOB error convergence to determine 'best' ntree
