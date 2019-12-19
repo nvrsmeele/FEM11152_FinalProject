@@ -6,6 +6,8 @@
 library(readr)
 library(dplyr)
 library(plyr)
+library(lubridate)
+library(data.table)
 library(caTools)
 library(text2vec)
 library(textmineR)
@@ -52,15 +54,29 @@ business <- business[,-6]
 business$categories <- strsplit(business$categories, split = ";")
 
 ##----
-## 1.2 Create new dataframe "reviews" consisting of subset of all restaurants
+## 1.2 Create new dataframe "reviews" as subset of selected restaurants
 
 # Merge dfs "business" and "yelp_reviews"
 reviews_full <- inner_join(yelp_reviews, business)
 
 # Create df "reviews" as subset of all "Diner" restaurants
-reviews_subset <- reviews_full[which(grepl("Diners", reviews_full$categories)),]
+reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
 reviews <- subset(reviews_subset, subset = open == TRUE)  # remove all closed diners
 reviews <- subset(reviews, subset = review_count > 20) # remove bias
+
+# Split date column into seperate columns
+reviews <- reviews %>%
+              mutate(year = year(date),
+                     month = month(date),
+                     day = day(date))
+
+# Visualize frequency over years
+ggplot(reviews, aes(x = year))+
+  geom_bar(col = "red", fill = "green", alpha = .2)+
+  scale_x_continuous(breaks = seq(2004, 2014, 1))
+
+# Subet all restaurant reviews from 2014
+reviews <- reviews[reviews$date %between% c("2014-01-01", "2014-12-31"),]
 
 ##----
 ## 1.3 Dataset "reviews_subset" and create workable dataset as "reviews_final"
@@ -68,20 +84,16 @@ reviews <- subset(reviews, subset = review_count > 20) # remove bias
 # Check data structure
 str(reviews)
 
-# (re-)Factor dependent variable "Stars"
+# (re-)Factor dependent variable "Star sentiment"
 reviews$stars <- factor(reviews$stars, ordered = TRUE)
-reviews$stars <- mapvalues(reviews$stars, from = c("1", "2", "4", "5"),
-                               to = c("1-2", "1-2", "4-5", "4-5"))
+reviews$sentiment <- mapvalues(reviews$stars, from = c("1", "2", "3","4", "5"),
+                           to = c("negative", "negative", "average","positive", "positive"))
+
+# Visualize review distribution over sentiment categories
+
 
 # Add "Document IDs" to dataframe
 reviews$doc_id <- rownames(reviews)
-
-# Create new "Sentiment" variable
-#reviews$sentiment <- reviews$stars
-
-# Create df with dependent variable "Stars" as 2 classes
-#reviews$sentiment <- mapvalues(reviews$sentiment, from = c("1", "2", "3", "4", "5"),
-#                     to = c("Not_awesome", "Not_awesome", "Not_awesome", "Awesome", "Awesome"))
 
 # Clean work environment to free memory
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset)
