@@ -213,13 +213,6 @@ lda_best <- FitLdaModel(text_dtm, k = k_opt, iterations = 1000, alpha = alpha_op
                         beta = beta_opt, calc_coherence = TRUE, calc_r2 = TRUE,
                         burnin = 100, calc_likelihood = TRUE)
 
-folds <- 5
-splitfolds <- sample(1:folds, nrow(text_dtm), replace = TRUE)
-train_set <- text_dtm[splitfolds != 1 , ]
-valid_set <- text_dtm[splitfolds == 1, ]
-
-test <- predict(lda_best, newdata = valid_set)
-
 ##----
 ## 2.3 Determine latent topics and convert each to feature vector
 
