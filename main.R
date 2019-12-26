@@ -8,6 +8,7 @@ library(dplyr)
 library(plyr)
 library(lubridate)
 library(data.table)
+library(ggplot2)
 library(caTools)
 library(text2vec)
 library(textmineR)
@@ -50,17 +51,26 @@ business <- business[,-3]
 business$avg_stars <- business$stars
 business <- business[,-6]
 
+# Remove unnecessary columns
+business <- business[, -5:-7]
+
 # Split character value in "Categories" variable
 business$categories <- strsplit(business$categories, split = ";")
 
 ##----
-## 1.2 Create new dataframe "reviews" as subset of selected restaurants
+## 1.2 Dataset "yelp_reviews"
+
+# Remove unnecessary columns
+yelp_reviews <- yelp_reviews[, c(-1:-2, -4, -6, -9:-10)]
+
+##----
+## 1.3 Create new dataframe "reviews" as subset of selected restaurants
 
 # Merge dfs "business" and "yelp_reviews"
 reviews_full <- inner_join(yelp_reviews, business)
 
 # Create df "reviews" as subset of all "Diner" restaurants
-reviews_subset <- reviews_full[which(grepl("Restaurants", reviews_full$categories)),]
+reviews_subset <- reviews_full[which(grepl("Diners", reviews_full$categories)),]
 reviews <- subset(reviews_subset, subset = open == TRUE)  # remove all closed diners
 reviews <- subset(reviews, subset = review_count > 20) # remove bias
 
@@ -76,10 +86,10 @@ ggplot(reviews, aes(x = year))+
   scale_x_continuous(breaks = seq(2004, 2014, 1))
 
 # Subet all restaurant reviews from 2014
-reviews <- reviews[reviews$date %between% c("2014-01-01", "2014-12-31"),]
+#reviews <- reviews[reviews$date %between% c("2012-01-01", "2012-12-31"),]
 
 ##----
-## 1.3 Dataset "reviews_subset" and create workable dataset as "reviews_final"
+## 1.4 Dataset "reviews_subset" and create workable dataset as "reviews_final"
 
 # Check data structure
 str(reviews)
@@ -90,7 +100,8 @@ reviews$sentiment <- mapvalues(reviews$stars, from = c("1", "2", "3","4", "5"),
                            to = c("negative", "negative", "average","positive", "positive"))
 
 # Visualize review distribution over sentiment categories
-
+ggplot(reviews, aes(x = sentiment))+
+  geom_bar(col = "red", fill = "green", alpha = .2)
 
 # Add "Document IDs" to dataframe
 reviews$doc_id <- rownames(reviews)
@@ -99,7 +110,7 @@ reviews$doc_id <- rownames(reviews)
 rm(business, reviews_full, yelp_business, yelp_reviews, reviews_subset)
 
 ##----
-## 1.4 Text data preprocessing (dataset "reviews_subset")
+## 1.5 Text data preprocessing (dataset "reviews_subset")
 
 # Function for text cleaning to reduce noise
 text_clean <- function(x){
@@ -148,8 +159,8 @@ for (i in 1:20) {
   set.seed(12345)
   
   # Train LDA model
-  temp <- FitLdaModel(dtm = text_dtm, k = i, iterations = 500, calc_coherence = TRUE,
-                     alpha = 0.1, beta = 0.05)
+  temp <- FitLdaModel(dtm = text_dtm, k = i, iterations = 1000, calc_coherence = TRUE,
+                     alpha = 0.1, beta = 0.05, burnin = 100)
   
   # Store coherence measure for each iteration
   lda_coh[i] <- mean(temp$coherence)
@@ -167,9 +178,9 @@ plot(ntopics, lda_coh, type = "l") # plot coherence measure for all topics
 
 # Create grid search with alpha and beta values
 hyper_grid <- expand.grid(
-  k = 11,
-  alpha = c(0.1, 3.5, 4, 4.55, 5, 6),
-  beta = c(0.1, 0.23, 0.5, 1),
+  k = 17,
+  alpha = c(0.1, 1.5, 2.94, 4),
+  beta = c(0.1, 0.23, 0.5, 1, 1.5),
   coherence = 0
 )
 
@@ -179,9 +190,9 @@ for (i in 1:nrow(hyper_grid)) {
   set.seed(123)
   
   # Train LDA model
-  lda_tune <- FitLdaModel(dtm = text_dtm, k = hyper_grid$k[i], iterations = 500,
-                          alpha = hyper_grid$alpha[i], beta = hyper_grid$beta[i],
-                          calc_coherence = TRUE)
+  lda_tune <- FitLdaModel(dtm = text_dtm, k = hyper_grid$k[i], iterations = 1000,
+                          burnin = 100, alpha = hyper_grid$alpha[i],
+                          beta = hyper_grid$beta[i], calc_coherence = TRUE)
   
   # Store coherence measure for each iteration
   hyper_grid$coherence[i] <- mean(lda_tune$coherence)
@@ -197,10 +208,17 @@ alpha_opt <- best_par[1,2] # best alpha parameter
 beta_opt <- best_par[1,3] # best beta parameter
 
 # Fit best LDA model with optimal parameters
-set.seed(123)
-lda_best <- FitLdaModel(text_dtm, k = k_opt, iterations = 500, alpha = alpha_opt,
+set.seed(1235)
+lda_best <- FitLdaModel(text_dtm, k = k_opt, iterations = 1000, alpha = alpha_opt,
                         beta = beta_opt, calc_coherence = TRUE, calc_r2 = TRUE,
-                        calc_likelihood = TRUE)
+                        burnin = 100, calc_likelihood = TRUE)
+
+folds <- 5
+splitfolds <- sample(1:folds, nrow(text_dtm), replace = TRUE)
+train_set <- text_dtm[splitfolds != 1 , ]
+valid_set <- text_dtm[splitfolds == 1, ]
+
+test <- predict(lda_best, newdata = valid_set)
 
 ##----
 ## 2.3 Determine latent topics and convert each to feature vector
@@ -212,29 +230,26 @@ topTerms <- GetTopTerms(phi = lda_best$phi, M = 10)
 topic_features <- as.data.frame(lda_best$theta)
 
 # Re-name topics and merge overlapping topics in feature vectors
-topic_features$serving_time <- topic_features$t_1
-topic_features <- topic_features[, -1]
+topic_features$breakfast_menu <- topic_features$t_1 + topic_features$t_4
+topic_features$service <- topic_features$t_2 + topic_features$t_6
+topic_features$dinner_menu <- topic_features$t_3 + topic_features$t_5
+topic_features$opening_hours <- topic_features$t_7
+topic_features$overall_quality <- topic_features$t_8
+topic_features$food_quality <- topic_features$t_9
+topic_features$lunch_menu <- topic_features$t_10
+topic_features$price_quality <- topic_features$t_11
+topic_features$food_offer <- topic_features$t_12
+topic_features$dessert_menu <- topic_features$t_13
+topic_features$visit_freq <- topic_features$t_14
+topic_features$location <- topic_features$t_15
+topic_features$ambience <- topic_features$t_16
+topic_features$guest_exp <- topic_features$t_17
 
-topic_features$food_quality <- topic_features$t_2 + topic_features$t_8
-topic_features <- topic_features[, c(-1, -7)]
-
-topic_features$location <- topic_features$t_3
-topic_features <- topic_features[, -1]
-
-topic_features$price_quality <- topic_features$t_4
-topic_features <- topic_features[, -1]
-
-topic_features$menu_variation <- topic_features$t_5 + topic_features$t_6
-topic_features <- topic_features[, -1:-2]
-
-topic_features$breakfast_menu <- topic_features$t_7 + topic_features$t_9
-topic_features <- topic_features[, -1:-2]
-
-topic_features$dinner_menu <- topic_features$t_10 + topic_features$t_11
-topic_features <- topic_features[, -1:-2]
+# Remove all original vectors from df
+topic_features <- topic_features[,-1:-17]
 
 # Add sentiment labels to df
-topic_features$stars <- reviews$stars
+topic_features$sentiment <- reviews$sentiment
 
 #----
 # 3. Preparation for classification modeling
