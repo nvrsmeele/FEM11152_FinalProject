@@ -12,11 +12,11 @@ library(ggplot2)
 library(caTools)
 library(text2vec)
 library(textmineR)
+library(caret)
 #library(tm)
 #library(textstem)
 #library(lexicon)
 library(naivebayes)
-library(caret)
 library(randomForest)
 library(iml)
 #library(rpart)
@@ -253,23 +253,23 @@ topic_features$sentiment <- reviews$sentiment
 
 # Create training/testing set by random selection
 set.seed(111)
-samp <- sample.split(topic_features$stars, SplitRatio = 2/3)
+samp <- sample.split(topic_features$sentiment, SplitRatio = 2/3)
 train <- subset(topic_features, samp == TRUE) # declare training set
 test <- subset(topic_features, samp == FALSE) # declare test set
 
-ytrain <- train[,8] # declare training response variable
-xtrain <- train[,1:7] # declare training predictor variables
+ytrain <- train[,15] # declare training response variable
+xtrain <- train[,1:14] # declare training predictor variables
 
-ytest <- test[,8] # declare test response variable
-xtest <- test[,1:7] # declare test predictor variables
+ytest <- test[,15] # declare test response variable
+xtest <- test[,1:14] # declare test predictor variables
 
 ##----
 ## 3.2 Solve for imbalanced dataset
 
 # Downsample the training set to reduce bias towards "4-5" class
-trainDown <- downSample(xtrain, ytrain, yname = "stars")
-xtrainDown <- trainDown[,1:7]
-ytrainDown <- trainDown[,8]
+trainDown <- downSample(xtrain, ytrain, yname = "sentiment")
+xtrainDown <- trainDown[,1:14]
+ytrainDown <- trainDown[,15]
 
 #----
 # 4. Classification modeling
@@ -279,7 +279,7 @@ ytrainDown <- trainDown[,8]
 ## 4.1 Naive Bayes classifier
 
 # Step 1: Create NB classifier
-nb_model <- multinomial_naive_bayes(as.matrix(xtrainDown), ytrainDown, laplace = 0.5)
+nb_model <- naive_bayes(as.matrix(xtrainDown), ytrainDown, usekernel = TRUE)
 
 # Step 2: Generate predictions of the NB classifier
 pred <- predict(nb_model, data = test, type = "class")
@@ -292,7 +292,7 @@ nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 
 # Step 1: Run initial Random Forest model
 set.seed(200)
-rf_model <- randomForest(xtrainDown, ytrainDown, mtry = 3, replace = TRUE,
+rf_model <- randomForest(xtrainDown, ytrainDown, mtry = 4, replace = TRUE,
                          importance = TRUE, ntree = 1500, do.trace = TRUE,
                          control = rpart.control(minsplit = 2, cp = 0))
 
@@ -302,10 +302,10 @@ plot(rf_model$err.rate[,1], type="l", xlab = "Number of bootstrap samples",
 abline(v = 1000, col = "red", lty = 3)
 
 # Step 3: Find 'best' mtry
-mtry_err <- vector(length = 7) # initialize empty vector
+mtry_err <- vector(length = 14) # initialize empty vector
 
 # Run 7-times random forest model and obtain OOB estimated error per interation
-for(i in 1:7){
+for(i in 1:14){
   set.seed(205)
   temp <- randomForest(xtrainDown, ytrainDown, mtry = i, replace = TRUE,
                        importance = TRUE, ntree = 1000, do.trace = TRUE,
@@ -314,22 +314,20 @@ for(i in 1:7){
 }
 
 # Store all 7 OOB estimated errors in matrix
-mtry <- c(1:7)
+mtry <- c(1:14)
 mtry_mx <- data.frame(cbind(mtry, mtry_err))
 
 # Visualize OOB error per mtry
 plot(mtry_mx$mtry, mtry_mx$mtry_err, type = "b", pch=19,
      xlab = "Number of predictors",
      ylab = "OOB error", main = "Random Forest predictor parameter")
-abline(v = 2, col = "red", lty = 3)
+abline(v = 4, col = "red", lty = 3)
 
 # Step 4: Run final Random Forest model
 set.seed(215)
-rf_best <- randomForest(xtrainDown, ytrainDown, mtry = 2, replace = TRUE,
+rf_best <- randomForest(xtrainDown, ytrainDown, mtry = 4, replace = TRUE,
                         importance = TRUE, ntree = 1000, xtest = xtest, ytest = ytest,
                         do.trace = TRUE, control = rpart.control(minsplit = 2, cp = 0))
-
-rf_best$importance
 
 # Step 5: Performance evaluation by OOB estimated error/accuracy
 rf_ooberr <- round(rf_best$err.rate[1000,1], digits = 4)
@@ -357,7 +355,7 @@ pred_nb <- function(model, newdata){
 
 # Multinomial
 predictor <- Predictor$new(nb_model, data = xtest, type = "class",
-                           y = ytest == "3", class = 2, predict.fun = pred_nb)
+                           y = ytest == "positive", class = 3, predict.fun = pred_nb)
 
 imp <- FeatureImp$new(predictor, loss = 'ce', compare = 'ratio', n.repetitions = 20)
 
@@ -758,12 +756,12 @@ ytrain.bin <- to_categorical(as.numeric(ytrain)-1, 3)
 ytest.bin <- to_categorical(as.numeric(ytest)-1, 3)
 
 model <- keras_model_sequential() %>% 
-  layer_dense(units = 6, activation = "relu", input_shape = c(7)) %>%
-  layer_dense(units = 4, activation = "relu") %>%
+  layer_dense(units = 12, activation = "relu", input_shape = c(14)) %>%
+  layer_dense(units = 8, activation = "relu") %>%
   layer_dense(units = 3, activation = "softmax")
 
 model %>% compile(
-  optimizer = optimizer_adam(),
+  optimizer = optimizer_rmsprop(),
   loss = 'categorical_crossentropy',
   metrics = list('accuracy')
 )
