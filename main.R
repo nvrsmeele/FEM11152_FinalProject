@@ -286,13 +286,13 @@ ytrainDown <- trainDown[,15]
 ## 4.1 Naive Bayes classifier
 
 # Step 1: Create NB classifier
-nb_model <- naive_bayes(as.matrix(xtrain), ytrain, usekernel = TRUE)
+nb_model <- naive_bayes(as.matrix(xtrainDown), ytrainDown, usekernel = TRUE)
 
 # Step 2: Generate predictions of the NB classifier
 pred <- predict(nb_model, data = test, type = "class")
 
 # Step 3: Create confusion matrix of NB's prediction performance
-nb_cfm <- confusionMatrix(data = pred, reference = ytrain)
+nb_cfm <- confusionMatrix(data = pred, reference = ytrainDown)
 
 ##----
 ## 4.2 Random Forest classifier
