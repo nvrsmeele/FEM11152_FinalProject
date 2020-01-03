@@ -74,7 +74,12 @@ reviews <- reviews %>%
 ggplot(reviews, aes(x = year))+
   geom_bar(col = "red", fill = "blue", alpha = .5)+
   scale_x_continuous(breaks = seq(2004, 2014, 1))+
-  labs(title = "Number of reviews over the years for all local diners")
+  labs(title = "Number of reviews over the years")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 ##----
 ## 1.4 Dataset "reviews_subset" and create workable dataset as "reviews_final"
@@ -90,7 +95,12 @@ reviews$sentiment <- mapvalues(reviews$stars, from = c("1", "2", "3","4", "5"),
 # Visualize review distribution over sentiment categories
 ggplot(reviews, aes(x = sentiment))+
   geom_bar(col = "red", fill = "blue", alpha = .5)+
-  labs(title = "Number of reviews per sentiment class", x = "Sentiment class")
+  labs(title = "Number of reviews per sentiment class", x = "Sentiment class")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 # Add "Document IDs" to dataframe
 reviews$doc_id <- rownames(reviews)
@@ -165,9 +175,14 @@ lda_run1 <- as.data.frame(cbind(lda_coh, ntopics)) # create df with all info
 ggplot(lda_run1, aes(x = ntopics, y = lda_coh))+
   geom_line(col = "black")+
   geom_point(col = "black")+
-  labs(title = "Coherence measure per topic", x = "number of topics",
+  labs(title = "", x = "number of topics",
        y = "Coherence measure")+
-  geom_vline(xintercept = 17, linetype = "dotted", color = "red", size = 1)
+  geom_vline(xintercept = 17, linetype = "dotted", color = "red", size = 1)+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 ##----
 ## 2.2 Tune for alpha and beta
@@ -211,8 +226,14 @@ ggplot(hyper_grid1, aes(x = alpha, y = coherence, fill = beta))+
   geom_bar(position = "dodge", stat = "identity")+
   scale_x_continuous(breaks = c(0.1, 1.5, 2.94, 4))+
   scale_fill_brewer(palette="Spectral")+
-  labs(title = "Coherence measure for each alpha/beta combination",
-       y = "Coherence measure")
+  labs(title = "",
+       y = "Coherence measure")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17),
+        legend.text = element_text(size = 15))
 
 # Fit best LDA model with optimal parameters
 set.seed(1235)
@@ -311,7 +332,12 @@ ggplot(err_best.tree, aes(x = ntree, y = OOB))+
   geom_line(col = "black")+
   labs(title = "Random Forest (B) bootstrap samples", x = "number of bootstrap samples",
        y = "OOB error")+
-  geom_vline(xintercept = 1000, linetype = "dotted", color = "red", size = 1)
+  geom_vline(xintercept = 1000, linetype = "dotted", color = "red", size = 1)+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 # Step 3: Find 'best' mtry
 mtry_err <- vector(length = 14) # initialize empty vector
@@ -335,7 +361,12 @@ ggplot(mtry_mx, aes(x = mtry, y = mtry_err))+
   geom_point()+
   labs(title = "Random Forest (m) predictor parameter", x = "number of (m) predictors",
        y = "OOB error")+
-  geom_vline(xintercept = 4, linetype = "dotted", color = "red", size = 1)
+  geom_vline(xintercept = 4, linetype = "dotted", color = "red", size = 1)+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 # Step 4: Run final Random Forest model
 set.seed(215)
@@ -394,13 +425,28 @@ fi_positive<- FeatureImp$new(pred_positive, loss = 'ce', compare = 'ratio',
 
 # Step 4: Plot the PFI for each class
 fi_negative$plot()+ # negative sentiment class
-  labs(title = "Negative sentiment class")
+  labs(title = "Negative sentiment class")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
   
 fi_average$plot()+ # average sentiment class
-  labs(title = "Average sentiment class")
+  labs(title = "Average sentiment class")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 fi_positive$plot()+ # positive sentiment class
-  labs(title = "Positive sentiment class")
+  labs(title = "Positive sentiment class")+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17),
+        title = element_text(size = 17))
 
 # Step 5: Print PFI results for each class
 fi_negative$results # negative sentiment class
