@@ -20,8 +20,8 @@ library(iml)
 library(readr)
 
 # Load full dataset
-yelp_reviews <- read_csv("yelp_academic_dataset_review.csv")
-yelp_business <- read_csv("yelp_academic_dataset_business.csv")
+yelp_reviews <- read_csv("data/yelp_academic_dataset_review.csv")
+yelp_business <- read_csv("data/yelp_academic_dataset_business.csv")
 
 #----
 # 1. Data preprocessing
