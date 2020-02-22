@@ -1,12 +1,9 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.20 (TeX Live 2019) (preloaded format=pdflatex 2020.1.3)  22 FEB 2020 20:43
+This is pdfTeX, Version 3.14159265-2.6-1.40.20 (TeX Live 2019) (preloaded format=pdflatex 2020.1.3)  22 FEB 2020 20:50
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.tex
-
-
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.te
-x
+**FinalPaper_MLseminar.tex
+(./FinalPaper_MLseminar.tex
 LaTeX2e <2019-10-01> patch level 3
 (/Users/nsmeele/Library/TinyTeX/texmf-dist/tex/latex/base/article.cls
 Document Class: article 2019/10/25 v1.4k Standard LaTeX document class
@@ -896,11 +893,8 @@ Package xcolor Info: Model `wave' substituted by `hsb' on input line 1371.
 )
 \@quotelevel=\count339
 \@quotereset=\count340
-
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.au
-x)
-\openout1 = `FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAn
-alytics.aux'.
+(./FinalPaper_MLseminar.aux)
+\openout1 = `FinalPaper_MLseminar.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 101.
 LaTeX Font Info:    ... okay on input line 101.
@@ -995,14 +989,9 @@ Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
 LaTeX Info: Redefining \ref on input line 101.
 LaTeX Info: Redefining \pageref on input line 101.
 LaTeX Info: Redefining \nameref on input line 101.
-
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.ou
-t)
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.ou
-t)
+(./FinalPaper_MLseminar.out) (./FinalPaper_MLseminar.out)
 \@outlinefile=\write4
-\openout4 = `FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAn
-alytics.out'.
+\openout4 = `FinalPaper_MLseminar.out'.
 
 Package biblatex Info: Trying to load language 'english' -> 'american-apa'...
 Package biblatex Info: ... file 'american-apa.lbx' found.
@@ -1043,15 +1032,11 @@ File: english.lbx 2019/12/01 v3.14 biblatex localization (PK/MW)
 Package biblatex Info: Input encoding 'utf8' detected.
 Package biblatex Info: Automatic encoding selection.
 (biblatex)             Assuming data encoding 'utf8'.
-\openout3 = `FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAn
-alytics.bcf'.
+\openout3 = `FinalPaper_MLseminar.bcf'.
 
 Package biblatex Info: Trying to load bibliographic data...
-Package biblatex Info: ... file 'FinalAssignment_Nicholas_Smeele_500772_Msc_Dat
-aScience_MarketingAnalytics.bbl' found.
-
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.bb
-l)
+Package biblatex Info: ... file 'FinalPaper_MLseminar.bbl' found.
+(./FinalPaper_MLseminar.bbl)
 Package biblatex Info: Reference section=0 on input line 101.
 Package biblatex Info: Reference segment=0 on input line 101.
 
@@ -1220,13 +1205,10 @@ mg/fi_average.png> <./img/fi_positive.png>] [9]
 Package atveryend Info: Empty hook `BeforeClearDocument' on input line 820.
 [10]
 Package atveryend Info: Empty hook `AfterLastShipout' on input line 820.
-
-(./FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAnalytics.au
-x)
+(./FinalPaper_MLseminar.aux)
 Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 820.
 Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 820.
-Package rerunfilecheck Info: File `FinalAssignment_Nicholas_Smeele_500772_Msc_D
-ataScience_MarketingAnalytics.out' has not changed.
+Package rerunfilecheck Info: File `FinalPaper_MLseminar.out' has not changed.
 (rerunfilecheck)             Checksum: 0E8F278419454EDE0C32B07DDF10EFC9;1849.
 
 LaTeX Warning: There were undefined references.
@@ -1235,21 +1217,19 @@ LaTeX Warning: There were undefined references.
 Package biblatex Warning: Please rerun LaTeX.
 (biblatex)                Page breaks have changed.
 
-Package logreq Info: Writing requests to 'FinalAssignment_Nicholas_Smeele_50077
-2_Msc_DataScience_MarketingAnalytics.run.xml'.
-\openout1 = `FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_MarketingAn
-alytics.run.xml'.
+Package logreq Info: Writing requests to 'FinalPaper_MLseminar.run.xml'.
+\openout1 = `FinalPaper_MLseminar.run.xml'.
 
 Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 820.
  ) 
 Here is how much of TeX's memory you used:
  21907 strings out of 494107
- 360631 string characters out of 6172773
- 942353 words of memory out of 5000000
+ 359571 string characters out of 6172773
+ 942141 words of memory out of 5000000
  25453 multiletter control sequences out of 15000+600000
  77667 words of font info for 129 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 47i,8n,61p,1016b,4846s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 47i,8n,61p,963b,4846s stack positions out of 5000i,500n,10000p,200000b,80000s
 {/Users/nsmeele/Library/TinyTeX/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc}{
 /Users/nsmeele/Library/TinyTeX/texmf-dist/fonts/enc/dvips/lm/lm-mathex.enc}{/Us
 ers/nsmeele/Library/TinyTeX/texmf-dist/fonts/enc/dvips/lm/lm-rm.enc}{/Users/nsm
@@ -1267,8 +1247,7 @@ ype1/public/lm/lmr7.pfb></Users/nsmeele/Library/TinyTeX/texmf-dist/fonts/type1/
 public/lm/lmr8.pfb></Users/nsmeele/Library/TinyTeX/texmf-dist/fonts/type1/publi
 c/lm/lmri10.pfb></Users/nsmeele/Library/TinyTeX/texmf-dist/fonts/type1/public/l
 m/lmsy10.pfb>
-Output written on FinalAssignment_Nicholas_Smeele_500772_Msc_DataScience_Market
-ingAnalytics.pdf (10 pages, 476742 bytes).
+Output written on FinalPaper_MLseminar.pdf (10 pages, 476742 bytes).
 PDF statistics:
  270 PDF objects out of 1000 (max. 8388607)
  225 compressed objects within 3 object streams
