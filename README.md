@@ -13,4 +13,4 @@ The dataset used for this project is part of the [Yelp's Dataset Challenge](http
 To tackle this challenge, the Latent Dirichlet Allocation (LDA) model is used to uncover the latent topics in each text document. Based on the obtained latent topics, the Naive Bayes (NB) classifier is used as a base model and compared to a Random Forest (RF) model to predict the sentiment of each document. The last step is to identify which latent topics drives the predicted sentiment. For this task, the model-agnostic technique called Permutation Feature Importance (PFI) is used.
 
 ### Course result
-This coursework received a grade in the top-9% of all students in the MSc program; the small missing piece was that I should have explained the methods a bit more in-depth from a technical point of view, including the Markov Chain Monte Carlo (MCMC) algorithm Gibbs sampling to estimate the Dirichlet prior.
+This coursework received a 9.3 out of 10 as grade; the small missing piece was that I should have explained the methods a bit more in-depth from a technical point of view, including the Markov Chain Monte Carlo (MCMC) algorithm Gibbs sampling to estimate the Dirichlet prior.
