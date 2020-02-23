@@ -1,6 +1,6 @@
 ## FEM11152 Final Project (autumn 2019)
 
-This project uses a semantic and classification approach for Yelp reviews to identify which restaurant features are the main drivers for negative, average and positive star-ratings on the platform (see [paper](https://github.com/nvrsmeele/FEM11152_NLP_FinalProject/blob/master/paper/FinalPaper_MLseminar.pdf) and [code](https://github.com/nvrsmeele/FEM11152_NLP_FinalProject/blob/master/code/main.R)).
+This project uses a semantic and classification approach for Yelp reviews to identify which restaurant features are the main drivers for negative, average and positive star-ratings on the platform (see [paper](https://github.com/nvrsmeele/FEM11152_FinalProject/blob/master/paper/FinalPaper_MLseminar.pdf) and [code](https://github.com/nvrsmeele/FEM11152_FinalProject/blob/master/code/main.R)).
 
 ### Project background
 Yelp is a platform and information source that helps customers to plan a night out and locate local businesses based on social networking functionalities such as reviews and star-ratings. However, reviews are not only valuable to customers but are providing valuable insights for restaurant owners as well. Local restaurants can identify what elements their customers like or what needs to be improved in their service and food offering to keep their customers satisfied.
